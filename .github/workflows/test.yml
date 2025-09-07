@@ -1,4 +1,4 @@
-name: CI
+name: Test
 
 on:
   push:
@@ -33,30 +33,6 @@ jobs:
       
       - name: Run tests
         run: go test -race -cover ./...
-      
-      - name: Run go vet
-        run: go vet ./...
-
-  format-check:
-    name: Format Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install prettier
-        run: npm install -g prettier
-      
-      - name: Check markdown formatting
-        run: prettier --check "*.md"
 
   build:
     name: Build

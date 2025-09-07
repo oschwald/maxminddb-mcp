@@ -5,8 +5,35 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    name: Lint
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install prettier
+        run: npm install -g prettier
+      
+      - name: Check markdown formatting
+        run: |
+          echo "Checking markdown formatting..."
+          if ! prettier --check "*.md"; then
+            echo "❌ Markdown files are not formatted with prettier. Run: npx prettier --write \"*.md\""
+            exit 1
+          fi
+          echo "✅ All markdown files are properly formatted!"
+
+  go-lint:
+    name: Go Lint
     runs-on: ubuntu-latest
     
     steps:
@@ -20,11 +47,6 @@ jobs:
         with:
           go-version: '1.24'
       
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
       - name: Cache Go modules
         uses: actions/cache@v3
         with:
@@ -33,20 +55,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       
-      - name: Install prettier
-        run: npm install -g prettier
-      
       - name: Download Go dependencies
         run: go mod download
       
-      - name: Check markdown formatting
-        run: |
-          echo "Checking markdown formatting..."
-          if ! prettier --check "*.md"; then
-            echo "❌ Markdown files are not formatted with prettier. Run: npx prettier --write \"*.md\""
-            exit 1
-          fi
-          echo "✅ All markdown files are properly formatted!"
+      - name: Run go vet
+        run: go vet ./...
       
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
