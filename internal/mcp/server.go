@@ -2,9 +2,12 @@
 package mcp
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -110,18 +113,24 @@ func (s *Server) handleLookupIP(
 	ipStr, err := request.RequireString("ip")
 	if err != nil {
 		//nolint:nilerr // MCP protocol expects error result, not Go error
-		return mcp.NewToolResultError(
-			"Missing required parameter: ip",
-		), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "missing_parameter",
+				"message": "Missing required parameter: ip",
+			},
+		}), nil
 	}
 
 	// Parse IP address
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
 		//nolint:nilerr // MCP protocol expects error result, not Go error
-		return mcp.NewToolResultError(
-			"Invalid IP address: " + ipStr,
-		), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "invalid_ip",
+				"message": "Invalid IP address: " + ipStr,
+			},
+		}), nil
 	}
 
 	// Get database name if specified
@@ -143,18 +152,24 @@ func (s *Server) handleLookupNetwork(
 	networkStr, err := request.RequireString("network")
 	if err != nil {
 		//nolint:nilerr // MCP protocol expects error result, not Go error
-		return mcp.NewToolResultError(
-			"Missing required parameter: network",
-		), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "missing_parameter",
+				"message": "Missing required parameter: network",
+			},
+		}), nil
 	}
 
 	// Parse network
 	network, err := netip.ParsePrefix(networkStr)
 	if err != nil {
 		//nolint:nilerr // MCP protocol expects error result, not Go error
-		return mcp.NewToolResultError(
-			"Invalid network: " + networkStr,
-		), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "invalid_network",
+				"message": "Invalid network: " + networkStr,
+			},
+		}), nil
 	}
 
 	// Get database name
@@ -164,7 +179,12 @@ func (s *Server) handleLookupNetwork(
 	if dbName == "" {
 		databases := s.dbManager.ListDatabases()
 		if len(databases) == 0 {
-			return mcp.NewToolResultError("No databases available"), nil
+			return mcp.NewToolResultStructuredOnly(map[string]any{
+				"error": map[string]any{
+					"code":    "no_databases",
+					"message": "No databases available",
+				},
+			}), nil
 		}
 		dbName = databases[0].Name
 	}
@@ -172,7 +192,12 @@ func (s *Server) handleLookupNetwork(
 	// Get reader
 	reader, exists := s.dbManager.GetReader(dbName)
 	if !exists {
-		return mcp.NewToolResultError("Database not found: " + dbName), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "db_not_found",
+				"message": "Database not found: " + dbName,
+			},
+		}), nil
 	}
 
 	// Parse filters from request
@@ -180,7 +205,12 @@ func (s *Server) handleLookupNetwork(
 
 	// Validate filters
 	if err := filter.Validate(filters); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid filters: %v", err)), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "invalid_filters",
+				"message": fmt.Sprintf("Invalid filters: %v", err),
+			},
+		}), nil
 	}
 
 	// Get filter mode
@@ -203,9 +233,12 @@ func (s *Server) handleLookupNetwork(
 			var err error
 			iter, err = s.iterMgr.ResumeIterator(reader, resumeToken)
 			if err != nil {
-				return mcp.NewToolResultError(
-					fmt.Sprintf("Failed to resume iterator: %v", err),
-				), nil
+				return mcp.NewToolResultStructuredOnly(map[string]any{
+					"error": map[string]any{
+						"code":    "resume_failed",
+						"message": fmt.Sprintf("Failed to resume iterator: %v", err),
+					},
+				}), nil
 			}
 		}
 	}
@@ -215,14 +248,24 @@ func (s *Server) handleLookupNetwork(
 		var err error
 		iter, err = s.iterMgr.CreateIterator(reader, dbName, network, filters, filterMode)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to create iterator: %v", err)), nil
+			return mcp.NewToolResultStructuredOnly(map[string]any{
+				"error": map[string]any{
+					"code":    "iterator_creation_failed",
+					"message": fmt.Sprintf("Failed to create iterator: %v", err),
+				},
+			}), nil
 		}
 	}
 
 	// Perform iteration
 	result, err := s.iterMgr.Iterate(iter, maxResults)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Iteration failed: %v", err)), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "iteration_failed",
+				"message": fmt.Sprintf("Iteration failed: %v", err),
+			},
+		}), nil
 	}
 
 	return mcp.NewToolResultStructuredOnly(result), nil
@@ -234,6 +277,10 @@ func (s *Server) handleListDatabases(
 	_ mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	databases := s.dbManager.ListDatabases()
+	// Sort databases by name for deterministic ordering
+	slices.SortFunc(databases, func(a, b *database.Info) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
 	return mcp.NewToolResultStructuredOnly(map[string]any{
 		"databases": databases,
 	}), nil
@@ -245,12 +292,22 @@ func (s *Server) handleUpdateDatabases(
 	_ mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	if s.updater == nil {
-		return mcp.NewToolResultError("Database updates not available in this mode"), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "updates_not_available",
+				"message": "Database updates not available in this mode",
+			},
+		}), nil
 	}
 
 	results, err := s.updater.UpdateAll(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Update failed: %v", err)), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "update_failed",
+				"message": fmt.Sprintf("Update failed: %v", err),
+			},
+		}), nil
 	}
 
 	return mcp.NewToolResultStructuredOnly(map[string]any{
@@ -265,12 +322,22 @@ func (s *Server) lookupIPInSingleDatabase(
 ) (*mcp.CallToolResult, error) {
 	reader, exists := s.dbManager.GetReader(dbName)
 	if !exists {
-		return mcp.NewToolResultError("Database not found: " + dbName), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "db_not_found",
+				"message": "Database not found: " + dbName,
+			},
+		}), nil
 	}
 
 	var record map[string]any
 	if err := reader.Lookup(ip).Decode(&record); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Lookup failed: %v", err)), nil
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "lookup_failed",
+				"message": fmt.Sprintf("Lookup failed: %v", err),
+			},
+		}), nil
 	}
 
 	result := map[string]any{
@@ -337,13 +404,35 @@ func parseFiltersFromRequest(request mcp.CallToolRequest) []filter.Filter {
 		value := filterMap["value"]
 
 		if field != "" && operator != "" {
+			// Normalize operator with case-insensitive aliases
+			normalizedOp := normalizeOperator(operator)
 			filters = append(filters, filter.Filter{
 				Field:    field,
-				Operator: operator,
+				Operator: normalizedOp,
 				Value:    value,
 			})
 		}
 	}
 
 	return filters
+}
+
+// normalizeOperator normalizes operator names with case-insensitive aliases.
+func normalizeOperator(op string) string {
+	switch strings.ToLower(op) {
+	case "eq":
+		return "equals"
+	case "ne":
+		return "not_equals"
+	case "gt":
+		return "greater_than"
+	case "lt":
+		return "less_than"
+	case "gte":
+		return "greater_than_or_equal"
+	case "lte":
+		return "less_than_or_equal"
+	default:
+		return strings.ToLower(op)
+	}
 }

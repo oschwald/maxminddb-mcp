@@ -70,15 +70,17 @@ type Manager struct {
 	stopCleanup     chan struct{}
 	ttl             time.Duration
 	cleanupInterval time.Duration
+	bufferSize      int
 	mu              sync.RWMutex
 }
 
 // New creates a new iterator manager.
-func New(ttl, cleanupInterval time.Duration) *Manager {
+func New(ttl, cleanupInterval time.Duration, bufferSize int) *Manager {
 	return &Manager{
 		iterators:       make(map[string]*ManagedIterator),
 		ttl:             ttl,
 		cleanupInterval: cleanupInterval,
+		bufferSize:      bufferSize,
 		stopCleanup:     make(chan struct{}),
 	}
 }
@@ -354,7 +356,7 @@ func (m *Manager) createIteratorNoStart(
 		FilterEngine: filterEngine,
 		Created:      time.Now(),
 		LastAccess:   time.Now(),
-		networks:     make(chan maxminddb.Result, 100), // Buffered channel for streaming
+		networks:     make(chan maxminddb.Result, m.bufferSize), // Configurable buffered channel
 		stop:         make(chan struct{}),
 		done:         false,
 	}

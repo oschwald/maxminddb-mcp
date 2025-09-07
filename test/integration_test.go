@@ -120,7 +120,7 @@ func TestConfigValidation(t *testing.T) {
 
 // TestIteratorManagement tests the iterator lifecycle.
 func TestIteratorManagement(t *testing.T) {
-	iterMgr := iterator.New(1*time.Minute, 10*time.Second)
+	iterMgr := iterator.New(1*time.Minute, 10*time.Second, 20)
 	iterMgr.StartCleanup()
 	defer iterMgr.StopCleanup()
 

@@ -28,6 +28,7 @@ type Config struct {
 	IteratorCleanupInterval         string            `toml:"iterator_cleanup_interval"`
 	Directory                       DirectoryConfig   `toml:"directory"`
 	MaxMind                         MaxMindConfig     `toml:"maxmind"`
+	IteratorBuffer                  int               `toml:"iterator_buffer"`
 	UpdateIntervalDuration          time.Duration     `toml:"-"`
 	IteratorTTLDuration             time.Duration     `toml:"-"`
 	IteratorCleanupIntervalDuration time.Duration     `toml:"-"`
@@ -64,6 +65,7 @@ func DefaultConfig() *Config {
 		UpdateInterval:          "24h",
 		IteratorTTL:             "10m",
 		IteratorCleanupInterval: "1m",
+		IteratorBuffer:          100,
 		MaxMind: MaxMindConfig{
 			DatabaseDir: filepath.Join(homeDir, ".cache", "maxminddb-mcp", "databases"),
 			Endpoint:    "https://updates.maxmind.com",

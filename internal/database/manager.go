@@ -31,11 +31,12 @@ type Info struct {
 
 // Manager handles MMDB database lifecycle.
 type Manager struct {
-	readers   map[string]*maxminddb.Reader
-	databases map[string]*Info
-	watcher   *fsnotify.Watcher
-	watchDirs []string
-	mu        sync.RWMutex
+	readers       map[string]*maxminddb.Reader
+	databases     map[string]*Info
+	displayToPath map[string]string // Fast lookup from display name to absolute path
+	watcher       *fsnotify.Watcher
+	watchDirs     []string
+	mu            sync.RWMutex
 }
 
 // New creates a new database manager.
@@ -46,10 +47,11 @@ func New() (*Manager, error) {
 	}
 
 	return &Manager{
-		readers:   make(map[string]*maxminddb.Reader),
-		databases: make(map[string]*Info),
-		watcher:   watcher,
-		watchDirs: make([]string, 0),
+		readers:       make(map[string]*maxminddb.Reader),
+		databases:     make(map[string]*Info),
+		displayToPath: make(map[string]string),
+		watcher:       watcher,
+		watchDirs:     make([]string, 0),
 	}, nil
 }
 
@@ -175,14 +177,13 @@ func (m *Manager) GetReader(name string) (*maxminddb.Reader, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Find database by display name and return its reader
-	for path, db := range m.databases {
-		if db.Name == name {
-			reader, exists := m.readers[path]
-			return reader, exists
-		}
+	// Fast O(1) lookup using display name to path map
+	path, exists := m.displayToPath[name]
+	if !exists {
+		return nil, false
 	}
-	return nil, false
+	reader, exists := m.readers[path]
+	return reader, exists
 }
 
 // GetDatabase returns database info for the specified database by display name.
@@ -190,13 +191,13 @@ func (m *Manager) GetDatabase(name string) (*Info, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Find database by display name
-	for _, db := range m.databases {
-		if db.Name == name {
-			return db, true
-		}
+	// Fast O(1) lookup using display name to path map
+	path, exists := m.displayToPath[name]
+	if !exists {
+		return nil, false
 	}
-	return nil, false
+	db, exists := m.databases[path]
+	return db, exists
 }
 
 // ListDatabases returns all available databases.
@@ -212,15 +213,14 @@ func (m *Manager) RemoveDatabase(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Find database by display name
-	for path, db := range m.databases {
-		if db.Name == name {
-			// Remove from maps but don't close reader - let GC handle it
-			// since iterators may still be using the reader
-			delete(m.readers, path)
-			delete(m.databases, path)
-			break
-		}
+	// Fast O(1) lookup to find path by display name
+	path, exists := m.displayToPath[name]
+	if exists {
+		// Remove from all maps but don't close reader - let GC handle it
+		// since iterators may still be using the reader
+		delete(m.readers, path)
+		delete(m.databases, path)
+		delete(m.displayToPath, name)
 	}
 }
 
@@ -229,8 +229,11 @@ func (m *Manager) RemoveDatabaseByPath(path string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Remove from maps but don't close reader - let GC handle it
+	// Remove from all maps but don't close reader - let GC handle it
 	// since iterators may still be using the reader
+	if db, exists := m.databases[path]; exists {
+		delete(m.displayToPath, db.Name)
+	}
 	delete(m.readers, path)
 	delete(m.databases, path)
 }
@@ -242,10 +245,11 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Clear maps but don't close readers - let GC handle them
+	// Clear all maps but don't close readers - let GC handle them
 	// since iterators may still be using the readers
 	m.readers = make(map[string]*maxminddb.Reader)
 	m.databases = make(map[string]*Info)
+	m.displayToPath = make(map[string]string)
 
 	// Close watcher
 	return m.watcher.Close()
@@ -284,6 +288,8 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 	// Store reader and metadata using absolute path as key
 	m.readers[absPath] = reader
 	m.databases[absPath] = dbInfo
+	// Update display name to path mapping for O(1) lookups
+	m.displayToPath[dbInfo.Name] = absPath
 
 	return nil
 }
