@@ -79,6 +79,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Check if databases need initial update
+	if updater != nil && len(dbManager.ListDatabases()) == 0 {
+		slog.Info("No databases found, triggering initial update...")
+		if _, err := updater.UpdateAll(ctx); err != nil {
+			slog.Warn("Initial database update failed", "err", err)
+		}
+	}
+
 	// Start scheduled updates if configured
 	if updater != nil {
 		updater.StartScheduledUpdates(ctx)
