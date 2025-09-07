@@ -128,7 +128,7 @@ nfpms:
     homepage: https://github.com/oschwald/maxminddb-mcp
     maintainer: Greg Oschwald <oschwald@maxmind.com>
     description: A powerful Model Context Protocol (MCP) server for MaxMind MMDB databases
-    license: Apache 2.0
+    license: ISC
     formats:
       - deb
       - rpm
