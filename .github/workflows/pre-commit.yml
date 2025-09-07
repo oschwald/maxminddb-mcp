@@ -1,12 +1,12 @@
-name: Pre-commit Checks
+name: Lint
 
 on:
   push:
   pull_request:
 
 jobs:
-  pre-commit-checks:
-    name: Pre-commit Checks
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     
     steps:
@@ -24,8 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
       
       - name: Cache Go modules
         uses: actions/cache@v3
@@ -41,9 +39,9 @@ jobs:
       - name: Download Go dependencies
         run: go mod download
       
-      - name: Run prettier on markdown files
+      - name: Check markdown formatting
         run: |
-          echo "Running prettier on markdown files..."
+          echo "Checking markdown formatting..."
           if ! prettier --check "*.md"; then
             echo "❌ Markdown files are not formatted with prettier. Run: npx prettier --write \"*.md\""
             exit 1
@@ -82,4 +80,4 @@ jobs:
           echo "✅ All tests passed!"
       
       - name: Success message
-        run: echo "✅ All pre-commit checks passed!"
+        run: echo "✅ All linting checks passed!"
