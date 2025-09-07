@@ -51,6 +51,49 @@ func (iter *ManagedIterator) setDone() {
 	iter.done = true
 }
 
+// getLastNetwork safely gets the LastNetwork field.
+func (iter *ManagedIterator) getLastNetwork() netip.Prefix {
+	iter.mu.RLock()
+	defer iter.mu.RUnlock()
+	return iter.LastNetwork
+}
+
+// setLastNetwork safely sets the LastNetwork field.
+func (iter *ManagedIterator) setLastNetwork(network netip.Prefix) {
+	iter.mu.Lock()
+	defer iter.mu.Unlock()
+	iter.LastNetwork = network
+}
+
+// getProcessedMatched safely gets the Processed and Matched counters.
+func (iter *ManagedIterator) getProcessedMatched() (processed, matched int64) {
+	iter.mu.RLock()
+	defer iter.mu.RUnlock()
+	return iter.Processed, iter.Matched
+}
+
+// updateCounters safely updates the Processed and Matched counters.
+func (iter *ManagedIterator) updateCounters(processed, matched int64) {
+	iter.mu.Lock()
+	defer iter.mu.Unlock()
+	iter.Processed = processed
+	iter.Matched = matched
+}
+
+// incrementProcessed safely increments the Processed counter.
+func (iter *ManagedIterator) incrementProcessed() {
+	iter.mu.Lock()
+	defer iter.mu.Unlock()
+	iter.Processed++
+}
+
+// incrementMatched safely increments the Matched counter.
+func (iter *ManagedIterator) incrementMatched() {
+	iter.mu.Lock()
+	defer iter.mu.Unlock()
+	iter.Matched++
+}
+
 // ResumeToken contains information needed to resume iteration.
 type ResumeToken struct {
 	LastNetwork string          `json:"last_network"`
@@ -168,8 +211,7 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 	}
 
 	// Restore state from token
-	iterator.Processed = resumeToken.Processed
-	iterator.Matched = resumeToken.Matched
+	iterator.updateCounters(resumeToken.Processed, resumeToken.Matched)
 
 	// Restore last network if available for resume point
 	if resumeToken.LastNetwork != "" {
@@ -177,7 +219,7 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 		if err != nil {
 			return nil, fmt.Errorf("invalid last network in resume token: %w", err)
 		}
-		iterator.LastNetwork = lastNetwork
+		iterator.setLastNetwork(lastNetwork)
 	}
 
 	// Start streaming from the resume point (only once, with proper state)
@@ -219,7 +261,7 @@ func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*Iteration
 				break
 			}
 
-			iterator.Processed++
+			iterator.incrementProcessed()
 
 			// Decode the result data
 			var record map[string]any
@@ -228,7 +270,7 @@ func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*Iteration
 				continue
 			}
 
-			iterator.LastNetwork = result.Prefix()
+			iterator.setLastNetwork(result.Prefix())
 
 			// Apply filters if present
 			if iterator.FilterEngine != nil {
@@ -237,7 +279,7 @@ func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*Iteration
 				}
 			}
 
-			iterator.Matched++
+			iterator.incrementMatched()
 
 			results = append(results, NetworkResult{
 				Network: result.Prefix(),
@@ -256,13 +298,15 @@ endLoop:
 		return nil, fmt.Errorf("failed to generate resume token: %w", err)
 	}
 
+	totalProcessed, totalMatched := iterator.getProcessedMatched()
+
 	return &IterationResult{
 		Results:            results,
 		IteratorID:         iterator.ID,
 		ResumeToken:        resumeToken,
 		HasMore:            !iterator.isDone(),
-		TotalProcessed:     iterator.Processed,
-		TotalMatched:       iterator.Matched,
+		TotalProcessed:     totalProcessed,
+		TotalMatched:       totalMatched,
 		EstimatedRemaining: -1, // Can't estimate with streaming
 	}, nil
 }
@@ -302,17 +346,20 @@ func (m *Manager) cleanupExpired() {
 
 // generateResumeToken creates a resume token from the current iterator state.
 func (*Manager) generateResumeToken(iterator *ManagedIterator) (string, error) {
+	processed, matched := iterator.getProcessedMatched()
+	lastNetwork := iterator.getLastNetwork()
+
 	token := ResumeToken{
 		Database:   iterator.Database,
 		Network:    iterator.Network.String(),
 		Filters:    iterator.Filters,
 		FilterMode: iterator.FilterMode,
-		Processed:  iterator.Processed,
-		Matched:    iterator.Matched,
+		Processed:  processed,
+		Matched:    matched,
 	}
 
-	if iterator.LastNetwork.IsValid() {
-		token.LastNetwork = iterator.LastNetwork.String()
+	if lastNetwork.IsValid() {
+		token.LastNetwork = lastNetwork.String()
 	}
 
 	data, err := json.Marshal(token)
@@ -412,7 +459,7 @@ func (iter *ManagedIterator) startStreaming() {
 	}()
 
 	// If we have a LastNetwork from resume token, we need to skip to that point
-	skipUntil := iter.LastNetwork
+	skipUntil := iter.getLastNetwork()
 	skipping := skipUntil.IsValid()
 
 	for result := range iter.Reader.NetworksWithin(iter.Network) {

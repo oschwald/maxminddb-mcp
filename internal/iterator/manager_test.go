@@ -390,9 +390,9 @@ func TestGenerateResumeToken(t *testing.T) {
 	}
 
 	// Set some state
-	iterator.Processed = 100
-	iterator.Matched = 50
-	iterator.LastNetwork, _ = netip.ParsePrefix("1.1.1.0/24")
+	iterator.updateCounters(100, 50)
+	lastNetwork, _ := netip.ParsePrefix("1.1.1.0/24")
+	iterator.setLastNetwork(lastNetwork)
 
 	// Generate resume token
 	token, err := manager.generateResumeToken(iterator)
@@ -588,7 +588,7 @@ func TestManagedIteratorFields(t *testing.T) {
 		t.Error("Network field not set correctly")
 	}
 
-	if iterator.LastNetwork != lastNetwork {
+	if iterator.getLastNetwork() != lastNetwork {
 		t.Error("LastNetwork field not set correctly")
 	}
 
@@ -604,11 +604,12 @@ func TestManagedIteratorFields(t *testing.T) {
 		t.Error("FilterMode field not set correctly")
 	}
 
-	if iterator.Processed != 100 {
+	processed, matched := iterator.getProcessedMatched()
+	if processed != 100 {
 		t.Error("Processed field not set correctly")
 	}
 
-	if iterator.Matched != 50 {
+	if matched != 50 {
 		t.Error("Matched field not set correctly")
 	}
 }
