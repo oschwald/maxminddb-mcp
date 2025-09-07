@@ -207,7 +207,7 @@ func (s *Server) handleLookupNetwork(
 	if err := filter.Validate(filters); err != nil {
 		return mcp.NewToolResultStructuredOnly(map[string]any{
 			"error": map[string]any{
-				"code":    "invalid_filters",
+				"code":    "invalid_filter",
 				"message": fmt.Sprintf("Invalid filters: %v", err),
 			},
 		}), nil

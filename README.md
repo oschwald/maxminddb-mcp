@@ -51,6 +51,7 @@ update_interval = "24h"
 # Iterator cleanup settings
 iterator_ttl = "10m"
 iterator_cleanup_interval = "1m"
+iterator_buffer = 100
 
 [maxmind]
 # MaxMind account credentials
@@ -83,6 +84,13 @@ config_path = "/etc/GeoIP.conf"
 # Override database directory from GeoIP.conf
 database_dir = "~/.cache/maxminddb-mcp/databases"
 ```
+
+#### Configuration Options
+
+**Iterator Settings:**
+- `iterator_buffer` (default: 100): Channel buffer size for network iteration streaming. Higher values improve throughput for large network queries but use more memory. Values ≤ 0 are automatically clamped to the default.
+- `iterator_ttl` (default: "10m"): How long idle iterators are kept before cleanup
+- `iterator_cleanup_interval` (default: "1m"): How often to check for expired iterators
 
 ### GeoIP.conf Compatibility
 
