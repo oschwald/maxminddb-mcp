@@ -1,6 +1,8 @@
 # MaxMindDB MCP Server
 
-A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMindDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
+A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMind MMDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
+
+> **Important Notice**: This is an **unofficial project** and is **not endorsed by MaxMind Inc.** While it uses MaxMind's databases and follows their licensing terms, this MCP server is an independent implementation. For official MaxMind products and support, please visit [maxmind.com](https://www.maxmind.com/).
 
 ## Features
 
@@ -47,44 +49,29 @@ database_dir = "~/.cache/maxminddb-mcp/databases"
 
 ## Client Integration
 
-### Claude Desktop
-
-The official Anthropic Claude Desktop app with built-in MCP support.
-
-#### Installation & Setup
-
-1. **Install Claude Desktop**:
-
-   - **macOS**: Download from [claude.ai](https://claude.ai/download)
-   - **Windows**: Download from [claude.ai](https://claude.ai/download)
-
-2. **Configure the MCP Server**:
-
-   Add to your Claude Desktop configuration file:
-
-   **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
-   **Linux**: `~/.config/Claude/claude_desktop_config.json`
-
-   ```json
-   {
-     "mcpServers": {
-       "maxminddb": {
-         "command": "maxminddb-mcp",
-         "env": {
-           "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-         }
-       }
-     }
-   }
-   ```
-
-3. **Restart Claude Desktop** to load the MCP server
-
 <details>
-<summary>Alternative: Use existing GeoIP.conf</summary>
+<summary>Claude Desktop</summary>
 
-If you already have GeoIP.conf configured:
+Add to your Claude Desktop configuration file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
+**Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "maxminddb": {
+      "command": "maxminddb-mcp",
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+      }
+    }
+  }
+}
+```
+
+Alternative with existing GeoIP.conf:
 
 ```json
 {
@@ -96,120 +83,140 @@ If you already have GeoIP.conf configured:
 }
 ```
 
-The server will automatically detect `/etc/GeoIP.conf` or `~/.config/maxminddb-mcp/GeoIP.conf`.
+</details>
+
+<details>
+<summary>Claude Code (VS Code Extension)</summary>
+
+Install the Claude Code extension and add to VS Code settings:
+
+```json
+{
+  "claude.mcpServers": {
+    "maxminddb": {
+      "command": "maxminddb-mcp",
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+      }
+    }
+  }
+}
+```
 
 </details>
 
-### Continue
+<details>
+<summary>Continue</summary>
 
-A powerful AI assistant with native MCP support.
+Install the Continue extension and add to your Continue configuration (`~/.continue/config.json`):
 
-#### Installation & Setup
+```json
+{
+  "mcpServers": [
+    {
+      "name": "maxminddb",
+      "command": "maxminddb-mcp",
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+      }
+    }
+  ]
+}
+```
 
-1. **Install Continue**:
+</details>
 
-   ```bash
-   # VS Code Extension
-   code --install-extension Continue.continue
+<details>
+<summary>Zed</summary>
 
-   # Or install via VS Code marketplace
-   ```
+Add to Zed settings (`~/.config/zed/settings.json`):
 
-2. **Configure MCP Server**:
+```json
+{
+  "assistant": {
+    "mcp_servers": [
+      {
+        "name": "maxminddb",
+        "command": "maxminddb-mcp",
+        "env": {
+          "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+        }
+      }
+    ]
+  }
+}
+```
 
-   Add to your Continue configuration (`~/.continue/config.json`):
+</details>
 
-   ```json
-   {
-     "mcpServers": [
-       {
-         "name": "maxminddb",
-         "command": "maxminddb-mcp",
-         "env": {
-           "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-         }
-       }
-     ]
-   }
-   ```
+<details>
+<summary>Cline</summary>
 
-### Zed Editor
+Install Cline and add to VS Code settings:
 
-Modern code editor with MCP integration.
+```json
+{
+  "cline.mcpServers": {
+    "maxminddb": {
+      "command": "maxminddb-mcp",
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+      }
+    }
+  }
+}
+```
 
-#### Installation & Setup
+</details>
 
-1. **Install Zed**:
+<details>
+<summary>Sourcegraph Cody</summary>
 
-   ```bash
-   # macOS
-   brew install zed
+Add to Cody settings:
 
-   # Linux
-   curl -f https://zed.dev/install.sh | sh
-   ```
+```json
+{
+  "cody.experimental.mcp": {
+    "servers": {
+      "maxminddb": {
+        "command": "maxminddb-mcp",
+        "env": {
+          "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+        }
+      }
+    }
+  }
+}
+```
 
-2. **Configure MCP Server**:
+</details>
 
-   Add to Zed settings (`~/.config/zed/settings.json`):
+<details>
+<summary>LLM (Simon Willison)</summary>
 
-   ```json
-   {
-     "assistant": {
-       "mcp_servers": [
-         {
-           "name": "maxminddb",
-           "command": "maxminddb-mcp",
-           "env": {
-             "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-           }
-         }
-       ]
-     }
-   }
-   ```
-
-### Cline (VS Code Extension)
-
-AI-powered coding assistant with MCP support.
-
-#### Installation & Setup
-
-1. **Install Cline**:
-
-   ```bash
-   # Install via VS Code marketplace
-   code --install-extension saoudrizwan.claude-dev
-   ```
-
-2. **Configure MCP Server**:
-
-   Add to Cline settings in VS Code settings.json:
-
-   ```json
-   {
-     "cline.mcpServers": {
-       "maxminddb": {
-         "command": "maxminddb-mcp",
-         "env": {
-           "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-         }
-       }
-     }
-   }
-   ```
-
-### MCP Client Libraries
-
-For developers building custom MCP clients.
-
-#### Python
+Install the LLM tool and configure MCP:
 
 ```bash
-# Install MCP Python SDK
-pip install mcp
+# Install LLM
+pip install llm
 
-# Example usage
+# Configure MCP server
+llm mcp install maxminddb-mcp --command maxminddb-mcp
+
+# Use with environment variable
+MAXMINDDB_MCP_CONFIG=/path/to/config.toml llm chat -m claude-3.5-sonnet
+```
+
+</details>
+
+<details>
+<summary>Python SDK</summary>
+
+```bash
+pip install mcp
+```
+
+```python
 from mcp import ClientSession, StdioServerParameters
 
 async with ClientSession(
@@ -218,23 +225,17 @@ async with ClientSession(
         env={"MAXMINDDB_MCP_CONFIG": "/path/to/config.toml"}
     )
 ) as session:
-    # Initialize MCP session
     await session.initialize()
-
-    # List available tools
     tools = await session.list_tools()
-
-    # Call lookup_ip tool
-    result = await session.call_tool(
-        "lookup_ip",
-        {"ip": "8.8.8.8"}
-    )
+    result = await session.call_tool("lookup_ip", {"ip": "8.8.8.8"})
 ```
 
-#### TypeScript/JavaScript
+</details>
+
+<details>
+<summary>TypeScript SDK</summary>
 
 ```bash
-# Install MCP TypeScript SDK
 npm install @modelcontextprotocol/sdk
 ```
 
@@ -252,97 +253,58 @@ const client = new Client(
     name: "maxminddb-client",
     version: "1.0.0",
   },
-  {
-    capabilities: {},
-  },
+  { capabilities: {} },
 );
 
 await client.connect(transport);
-
-// List available tools
-const tools = await client.listTools();
-
-// Call lookup_ip tool
 const result = await client.callTool({
   name: "lookup_ip",
   arguments: { ip: "8.8.8.8" },
 });
 ```
 
-#### Go
+</details>
+
+<details>
+<summary>Go SDK</summary>
 
 ```bash
-# Install MCP Go SDK
 go get github.com/mark3labs/mcp-go
 ```
 
 ```go
-package main
-
 import (
-    "context"
-    "os/exec"
-
     "github.com/mark3labs/mcp-go/client"
     "github.com/mark3labs/mcp-go/transport/stdio"
 )
 
-func main() {
-    cmd := exec.Command("maxminddb-mcp")
-    cmd.Env = append(cmd.Env, "MAXMINDDB_MCP_CONFIG=/path/to/config.toml")
+cmd := exec.Command("maxminddb-mcp")
+cmd.Env = append(cmd.Env, "MAXMINDDB_MCP_CONFIG=/path/to/config.toml")
 
-    transport := stdio.NewTransport(cmd)
-    mcpClient := client.New(transport)
-
-    ctx := context.Background()
-
-    // Initialize connection
-    if err := mcpClient.Initialize(ctx); err != nil {
-        panic(err)
-    }
-
-    // List tools
-    tools, err := mcpClient.ListTools(ctx)
-    if err != nil {
-        panic(err)
-    }
-
-    // Call lookup_ip tool
-    result, err := mcpClient.CallTool(ctx, "lookup_ip", map[string]any{
-        "ip": "8.8.8.8",
-    })
-    if err != nil {
-        panic(err)
-    }
-}
+transport := stdio.NewTransport(cmd)
+mcpClient := client.New(transport)
+// ... use client
 ```
 
-### Command Line Testing
+</details>
 
-For testing and development purposes.
+<details>
+<summary>Command Line Testing</summary>
 
-#### Direct JSON-RPC
+Test the server directly using JSON-RPC:
 
 ```bash
-# Test server initialization
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"clientInfo":{"name":"test","version":"1.0"}}}' | maxminddb-mcp
-
 # List available tools
-echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | maxminddb-mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | maxminddb-mcp
 
 # Test IP lookup
-echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lookup_ip","arguments":{"ip":"8.8.8.8"}}}' | maxminddb-mcp
-```
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lookup_ip","arguments":{"ip":"8.8.8.8"}}}' | maxminddb-mcp
 
-#### Using jq for Pretty Output
-
-```bash
-# Pretty-printed tool listing
+# Pretty output with jq
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | maxminddb-mcp | jq .
-
-# IP lookup with formatted output
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_ip","arguments":{"ip":"8.8.8.8"}}}' | maxminddb-mcp | jq '.result.content[0].text | fromjson'
 ```
+
+</details>
 
 ### Configuration Notes
 
