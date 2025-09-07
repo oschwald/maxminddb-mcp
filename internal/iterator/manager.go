@@ -21,8 +21,6 @@ import (
 type ManagedIterator struct {
 	Created      time.Time
 	LastAccess   time.Time
-	networks     chan maxminddb.Result
-	stop         chan struct{}
 	FilterEngine *filter.Engine
 	Reader       *maxminddb.Reader
 	Network      netip.Prefix
@@ -34,21 +32,6 @@ type ManagedIterator struct {
 	Processed    int64
 	Matched      int64
 	mu           sync.RWMutex
-	done         bool
-}
-
-// isDone safely checks if the iterator is done.
-func (iter *ManagedIterator) isDone() bool {
-	iter.mu.RLock()
-	defer iter.mu.RUnlock()
-	return iter.done
-}
-
-// setDone safely sets the iterator as done.
-func (iter *ManagedIterator) setDone() {
-	iter.mu.Lock()
-	defer iter.mu.Unlock()
-	iter.done = true
 }
 
 // getLastNetwork safely gets the LastNetwork field.
@@ -128,17 +111,15 @@ type Manager struct {
 	stopCleanup     chan struct{}
 	ttl             time.Duration
 	cleanupInterval time.Duration
-	bufferSize      int
 	mu              sync.RWMutex
 }
 
 // New creates a new iterator manager.
-func New(ttl, cleanupInterval time.Duration, bufferSize int) *Manager {
+func New(ttl, cleanupInterval time.Duration) *Manager {
 	return &Manager{
 		iterators:       make(map[string]*ManagedIterator),
 		ttl:             ttl,
 		cleanupInterval: cleanupInterval,
-		bufferSize:      bufferSize,
 		stopCleanup:     make(chan struct{}),
 	}
 }
@@ -177,10 +158,6 @@ func (m *Manager) CreateIterator(
 	if err != nil {
 		return nil, err
 	}
-
-	// Start streaming networks in the background
-	go iterator.startStreaming()
-
 	return iterator, nil
 }
 
@@ -198,7 +175,7 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 		return nil, fmt.Errorf("invalid network in resume token: %w", err)
 	}
 
-	// Create iterator without starting streaming
+	// Create iterator from resume token state
 	iterator, err := m.createIteratorNoStart(
 		reader,
 		resumeToken.Database,
@@ -222,16 +199,13 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 		iterator.setLastNetwork(lastNetwork)
 	}
 
-	// Start streaming from the resume point (only once, with proper state)
-	go iterator.startStreaming()
-
 	return iterator, nil
 }
 
 // GetIterator retrieves an existing iterator by ID.
 func (m *Manager) GetIterator(id string) (*ManagedIterator, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	iterator, exists := m.iterators[id]
 	if exists {
@@ -241,7 +215,7 @@ func (m *Manager) GetIterator(id string) (*ManagedIterator, bool) {
 	return iterator, exists
 }
 
-// Iterate performs one iteration batch using streaming.
+// Iterate performs one iteration batch over the reader.
 func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*IterationResult, error) {
 	if iterator == nil {
 		return nil, errors.New("iterator cannot be nil")
@@ -251,47 +225,56 @@ func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*Iteration
 
 	results := make([]NetworkResult, 0, maxResults)
 
-	// Stream results from the channel
-	for len(results) < maxResults {
-		select {
-		case result, ok := <-iterator.networks:
-			if !ok {
-				// Channel closed, no more results
-				iterator.setDone()
-				break
-			}
+	// Pull results directly from the reader, supporting resume via LastNetwork
+	skipUntil := iterator.getLastNetwork()
+	skipping := skipUntil.IsValid()
+	hasMore := false
 
-			iterator.incrementProcessed()
-
-			// Decode the result data
-			var record map[string]any
-			if err := result.Decode(&record); err != nil {
-				// Skip records that can't be decoded
+	for result := range iterator.Reader.NetworksWithin(iterator.Network) {
+		// Resume point handling: include LastNetwork again for continuity
+		if skipping {
+			if result.Prefix() != skipUntil {
 				continue
 			}
+			skipping = false
+		}
 
+		iterator.incrementProcessed()
+
+		// Decode the result data
+		var record map[string]any
+		if err := result.Decode(&record); err != nil {
+			// Skip records that can't be decoded
 			iterator.setLastNetwork(result.Prefix())
+			continue
+		}
 
-			// Apply filters if present
-			if iterator.FilterEngine != nil {
-				if !iterator.FilterEngine.Matches(record) {
-					continue // Skip non-matching records
+		iterator.setLastNetwork(result.Prefix())
+
+		// Apply filters if present
+		if iterator.FilterEngine != nil {
+			if !iterator.FilterEngine.Matches(record) {
+				if len(results) >= maxResults {
+					hasMore = true
+					break
 				}
+				continue // Skip non-matching records
 			}
+		}
 
-			iterator.incrementMatched()
+		iterator.incrementMatched()
 
-			results = append(results, NetworkResult{
-				Network: result.Prefix(),
-				Data:    record,
-			})
-		default:
-			// No more results available immediately, exit the loop
-			goto endLoop
+		results = append(results, NetworkResult{
+			Network: result.Prefix(),
+			Data:    record,
+		})
+
+		if len(results) >= maxResults {
+			hasMore = true
+			break
 		}
 	}
 
-endLoop:
 	// Generate resume token
 	resumeToken, err := m.generateResumeToken(iterator)
 	if err != nil {
@@ -304,10 +287,10 @@ endLoop:
 		Results:            results,
 		IteratorID:         iterator.ID,
 		ResumeToken:        resumeToken,
-		HasMore:            !iterator.isDone(),
+		HasMore:            hasMore,
 		TotalProcessed:     totalProcessed,
 		TotalMatched:       totalMatched,
-		EstimatedRemaining: -1, // Can't estimate with streaming
+		EstimatedRemaining: 0,
 	}, nil
 }
 
@@ -316,14 +299,7 @@ func (m *Manager) RemoveIterator(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if iter, exists := m.iterators[id]; exists {
-		// Signal the streaming goroutine to stop
-		if !iter.isDone() {
-			close(iter.stop)
-			iter.setDone()
-		}
-		delete(m.iterators, id)
-	}
+	delete(m.iterators, id)
 }
 
 // cleanupExpired removes expired iterators.
@@ -334,11 +310,6 @@ func (m *Manager) cleanupExpired() {
 	now := time.Now()
 	for id, iterator := range m.iterators {
 		if now.Sub(iterator.LastAccess) > m.ttl {
-			// Signal the streaming goroutine to stop
-			if !iterator.isDone() {
-				close(iterator.stop)
-				iterator.setDone()
-			}
 			delete(m.iterators, id)
 		}
 	}
@@ -385,7 +356,7 @@ func (*Manager) parseResumeToken(tokenStr string) (*ResumeToken, error) {
 	return &token, nil
 }
 
-// createIteratorNoStart creates a new iterator without starting streaming.
+// createIteratorNoStart creates a new iterator without any background goroutines.
 func (m *Manager) createIteratorNoStart(
 	reader *maxminddb.Reader,
 	database string,
@@ -399,7 +370,14 @@ func (m *Manager) createIteratorNoStart(
 	// Create filter engine
 	var filterEngine *filter.Engine
 	if len(filters) > 0 {
-		filterEngine = filter.New(filters, filter.Mode(normalizedMode))
+		// Normalize operator aliases (e.g., eq -> equals)
+		norm := make([]filter.Filter, 0, len(filters))
+		for _, f := range filters {
+			f.Operator = normalizeOperator(f.Operator)
+			norm = append(norm, f)
+		}
+		filterEngine = filter.New(norm, filter.Mode(normalizedMode))
+		filters = norm
 	}
 
 	// Generate unique ID
@@ -418,9 +396,6 @@ func (m *Manager) createIteratorNoStart(
 		FilterEngine: filterEngine,
 		Created:      time.Now(),
 		LastAccess:   time.Now(),
-		networks:     make(chan maxminddb.Result, m.bufferSize), // Configurable buffered channel
-		stop:         make(chan struct{}),
-		done:         false,
 	}
 
 	m.mu.Lock()
@@ -451,47 +426,22 @@ func normalizeFilterMode(mode string) string {
 	}
 }
 
-// startStreaming begins streaming networks from the MMDB reader to the channel.
-func (iter *ManagedIterator) startStreaming() {
-	defer func() {
-		iter.setDone()
-		close(iter.networks)
-	}()
-
-	// If we have a LastNetwork from resume token, we need to skip to that point
-	skipUntil := iter.getLastNetwork()
-	skipping := skipUntil.IsValid()
-
-	for result := range iter.Reader.NetworksWithin(iter.Network) {
-		// Check if we should stop early
-		if iter.isDone() {
-			break
-		}
-
-		// Skip networks until we reach the resume point
-		if skipping {
-			if result.Prefix() != skipUntil {
-				continue
-			}
-			skipping = false
-			// Don't continue here - we want to emit the resume network
-		}
-
-		select {
-		case iter.networks <- result:
-			// Successfully sent result
-		case <-iter.stop:
-			// Iterator was stopped, exit goroutine
-			return
-		default:
-			// Channel buffer is full, block until space is available or stop signal
-			select {
-			case iter.networks <- result:
-				// Successfully sent result
-			case <-iter.stop:
-				// Iterator was stopped, exit goroutine
-				return
-			}
-		}
+// normalizeOperator maps common aliases to canonical operator names used by the filter engine.
+func normalizeOperator(op string) string {
+	switch strings.ToLower(op) {
+	case "eq":
+		return "equals"
+	case "ne":
+		return "not_equals"
+	case "gt":
+		return "greater_than"
+	case "lt":
+		return "less_than"
+	case "gte":
+		return "greater_than_or_equal"
+	case "lte":
+		return "less_than_or_equal"
+	default:
+		return strings.ToLower(op)
 	}
 }

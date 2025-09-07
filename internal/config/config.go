@@ -28,7 +28,6 @@ type Config struct {
 	IteratorCleanupInterval         string            `toml:"iterator_cleanup_interval"`
 	Directory                       DirectoryConfig   `toml:"directory"`
 	MaxMind                         MaxMindConfig     `toml:"maxmind"`
-	IteratorBuffer                  int               `toml:"iterator_buffer"`
 	UpdateIntervalDuration          time.Duration     `toml:"-"`
 	IteratorTTLDuration             time.Duration     `toml:"-"`
 	IteratorCleanupIntervalDuration time.Duration     `toml:"-"`
@@ -65,7 +64,6 @@ func DefaultConfig() *Config {
 		UpdateInterval:          "24h",
 		IteratorTTL:             "10m",
 		IteratorCleanupInterval: "1m",
-		IteratorBuffer:          100,
 		MaxMind: MaxMindConfig{
 			DatabaseDir: filepath.Join(homeDir, ".cache", "maxminddb-mcp", "databases"),
 			Endpoint:    "https://updates.maxmind.com",
@@ -107,11 +105,6 @@ func (c *Config) Validate() error {
 	c.IteratorCleanupIntervalDuration, err = time.ParseDuration(c.IteratorCleanupInterval)
 	if err != nil {
 		return fmt.Errorf("invalid iterator_cleanup_interval: %w", err)
-	}
-
-	// Validate and clamp IteratorBuffer
-	if c.IteratorBuffer <= 0 {
-		c.IteratorBuffer = 100 // Default buffer size
 	}
 
 	// Mode-specific validation

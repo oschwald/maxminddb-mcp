@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Nested field access with dot notation (e.g., `country.iso_code`)
 - **Stateful Iterator System**: Memory-efficient processing of large network ranges
   - Resumable iterations with `iterator_id` and `resume_token`
-  - Configurable buffer sizes and TTL cleanup
+  - TTL-based cleanup for expired iterators
   - Automatic state management and resource cleanup
 - **Auto-updating**: Scheduled database downloads with MD5 checksum validation
 - **File System Watching**: Dynamic loading of new/modified MMDB files in directory mode
@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Configuration
 
-- **Iterator Buffer Validation**: Values ≤ 0 automatically clamped to default (100)
+ 
 - **Duplicate Database Detection**: Warnings for name collisions across directories
 - **Flexible Database Storage**: Configurable paths with automatic directory creation
 - **Network Timeout Handling**: Robust error handling for network operations

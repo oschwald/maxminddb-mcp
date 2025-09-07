@@ -51,7 +51,7 @@ MAXMINDDB_MCP_CONFIG=/path/to/config.toml ./bin/maxminddb-mcp
 
 ### Key Design Patterns
 
-- **Iterator Pattern**: Streaming network processing with channels and goroutines
+- **Iterator Pattern**: Direct pull over MMDB network ranges with resumable state
 - **Manager Pattern**: Database lifecycle management with concurrent safety
 - **Filter Engine**: Type-aware comparisons with operator normalization
 - **Structured Errors**: Machine-readable error responses for MCP protocol
@@ -75,8 +75,7 @@ MAXMINDDB_MCP_CONFIG=/path/to/config.toml ./bin/maxminddb-mcp
 ### Performance Considerations
 
 - **Memory Management**: GC-based cleanup for database readers (no explicit Close)
-- **Concurrency**: Thread-safe with proper mutex usage and channel patterns
-- **Iterator Buffers**: Configurable channel sizes (default: 100)
+- **Concurrency**: Thread-safe with proper mutex usage
 - **O(1) Lookups**: Index maps for database name resolution
 
 ## Coding Standards
@@ -132,7 +131,6 @@ license_key = "your_key_here"
 editions = ["GeoLite2-City", "GeoLite2-Country"]
 
 # Performance tuning
-iterator_buffer = 200
 iterator_ttl = "15m"
 ```
 
@@ -227,10 +225,9 @@ func TestFeatureName(t *testing.T) {
 
 ### Iterator Implementation
 
-1. Use channels for streaming results
-2. Implement proper cancellation with context
-3. Resume tokens for stateful continuation
-4. TTL-based cleanup for expired iterators
+1. Iterate directly over `NetworksWithin` (pull model)
+2. Use resume tokens for stateful continuation
+3. TTL-based cleanup for expired iterators
 
 ## Debugging Tips
 

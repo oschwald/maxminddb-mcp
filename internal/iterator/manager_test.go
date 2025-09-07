@@ -16,7 +16,7 @@ func TestNew(t *testing.T) {
 	ttl := 30 * time.Minute
 	cleanupInterval := 5 * time.Minute
 
-	manager := New(ttl, cleanupInterval, 100)
+	manager := New(ttl, cleanupInterval)
 
 	if manager == nil {
 		t.Fatal("Manager should not be nil")
@@ -40,7 +40,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestCreateIterator(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	// Test creating iterator with valid test database
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
@@ -112,7 +112,7 @@ func TestCreateIterator(t *testing.T) {
 }
 
 func TestCreateIteratorWithoutFilters(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
 	if err != nil {
@@ -141,7 +141,7 @@ func TestCreateIteratorWithoutFilters(t *testing.T) {
 }
 
 func TestGetIterator(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	// Test getting non-existent iterator
 	iterator, exists := manager.GetIterator("nonexistent")
@@ -182,7 +182,7 @@ func TestGetIterator(t *testing.T) {
 }
 
 func TestIterate(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
 	if err != nil {
@@ -231,7 +231,7 @@ func TestIterate(t *testing.T) {
 }
 
 func TestIterateWithFilters(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
 	if err != nil {
@@ -273,7 +273,7 @@ func TestIterateWithFilters(t *testing.T) {
 }
 
 func TestRemoveIterator(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
 	if err != nil {
@@ -310,7 +310,7 @@ func TestRemoveIterator(t *testing.T) {
 }
 
 func TestStartStopCleanup(_ *testing.T) {
-	manager := New(10*time.Millisecond, 5*time.Millisecond, 10) // Very short intervals
+	manager := New(10*time.Millisecond, 5*time.Millisecond) // Very short intervals
 
 	// Start cleanup
 	manager.StartCleanup()
@@ -326,7 +326,7 @@ func TestStartStopCleanup(_ *testing.T) {
 
 func TestCleanupExpiredIterators(t *testing.T) {
 	// Use very short TTL for testing
-	manager := New(10*time.Millisecond, 5*time.Millisecond, 10)
+	manager := New(10*time.Millisecond, 5*time.Millisecond)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
 	if err != nil {
@@ -364,7 +364,7 @@ func TestCleanupExpiredIterators(t *testing.T) {
 }
 
 func TestGenerateResumeToken(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
 	if err != nil {
@@ -464,7 +464,7 @@ func TestGenerateID(t *testing.T) {
 }
 
 func TestIteratorConcurrency(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
 	if err != nil {
@@ -513,7 +513,7 @@ func TestIteratorConcurrency(t *testing.T) {
 }
 
 func TestMultipleIterators(t *testing.T) {
-	manager := New(30*time.Minute, 5*time.Minute, 100)
+	manager := New(30*time.Minute, 5*time.Minute)
 
 	reader, err := maxminddb.Open("../../testdata/test-data/GeoLite2-City-Test.mmdb")
 	if err != nil {
@@ -657,8 +657,6 @@ func TestResumeTokenFields(t *testing.T) {
 	if token.Matched != 50 {
 		t.Error("Matched field not set correctly")
 	}
-
-	// ResultIndex field removed in streaming version
 }
 
 func TestNetworkResultFields(t *testing.T) {

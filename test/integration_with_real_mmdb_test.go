@@ -143,7 +143,7 @@ func testIteratorWithRealMMDB(t *testing.T, dbPath string) {
 	}
 
 	// Create iterator manager
-	iterMgr := iterator.New(1*time.Minute, 10*time.Second, 20)
+	iterMgr := iterator.New(1*time.Minute, 10*time.Second)
 	iterMgr.StartCleanup()
 	defer iterMgr.StopCleanup()
 

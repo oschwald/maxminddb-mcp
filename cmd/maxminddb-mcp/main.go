@@ -66,11 +66,10 @@ func main() {
 		}
 	}
 
-	// Create iterator manager with configurable buffer size
+	// Create iterator manager
 	iterMgr := iterator.New(
 		cfg.IteratorTTLDuration,
 		cfg.IteratorCleanupIntervalDuration,
-		cfg.IteratorBuffer,
 	)
 	iterMgr.StartCleanup()
 	defer iterMgr.StopCleanup()

@@ -405,7 +405,6 @@ update_interval = "24h"
 # Iterator settings
 iterator_ttl = "10m"
 iterator_cleanup_interval = "1m"
-iterator_buffer = 100
 
 # Logging (optional)
 log_level = "info"  # debug, info, warn, error
@@ -450,7 +449,6 @@ database_dir = "/var/lib/GeoIP"
 
 **Iterator Settings:**
 
-- `iterator_buffer` (default: 100): Channel buffer size for network iteration streaming. Higher values improve throughput for large network queries but use more memory. Values ≤ 0 are automatically clamped to the default.
 - `iterator_ttl` (default: "10m"): How long idle iterators are kept before cleanup
 - `iterator_cleanup_interval` (default: "1m"): How often to check for expired iterators
 
@@ -871,11 +869,10 @@ The server validates all configuration on startup and provides detailed error me
 
 - **Base memory**: ~50MB
 - **Database storage**: 100-500MB depending on editions
-- **Iterator buffers**: Configurable (default: 100 items)
 
 ### Optimization Tips
 
-- **Iterator buffer size**: Increase `iterator_buffer` for high-throughput scenarios
+- Avoid unnecessary iterations: use selective filters and appropriate `max_results`
 - **Database selection**: Only download needed editions to reduce memory usage
 - **Update frequency**: Balance freshness vs. network usage with `update_interval`
 - **Filter efficiency**: Use selective filters early to reduce processing

@@ -133,34 +133,6 @@ func TestConfigValidation(t *testing.T) {
 			expectError: true,
 			errorMsg:    "invalid update_interval: time: invalid duration \"invalid\"",
 		},
-		{
-			name: "zero iterator buffer defaults to 100",
-			config: &Config{
-				Mode:                    "directory",
-				UpdateInterval:          "24h",
-				IteratorTTL:             "10m",
-				IteratorCleanupInterval: "1m",
-				IteratorBuffer:          0,
-				Directory: DirectoryConfig{
-					Paths: []string{"/tmp/mmdb"},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name: "negative iterator buffer defaults to 100",
-			config: &Config{
-				Mode:                    "directory",
-				UpdateInterval:          "24h",
-				IteratorTTL:             "10m",
-				IteratorCleanupInterval: "1m",
-				IteratorBuffer:          -5,
-				Directory: DirectoryConfig{
-					Paths: []string{"/tmp/mmdb"},
-				},
-			},
-			expectError: false,
-		},
 	}
 
 	for _, test := range tests {
@@ -177,17 +149,6 @@ func TestConfigValidation(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Errorf("Expected no error, got %v", err)
-			}
-
-			// Check that IteratorBuffer is clamped to 100 for specific tests
-			if test.name == "zero iterator buffer defaults to 100" ||
-				test.name == "negative iterator buffer defaults to 100" {
-				if test.config.IteratorBuffer != 100 {
-					t.Errorf(
-						"Expected IteratorBuffer to be clamped to 100, got %d",
-						test.config.IteratorBuffer,
-					)
-				}
 			}
 		})
 	}

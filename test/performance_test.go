@@ -88,7 +88,7 @@ func BenchmarkFilterEngine(b *testing.B) {
 }
 
 func BenchmarkIteratorCreation(b *testing.B) {
-	iterMgr := iterator.New(10*time.Minute, 1*time.Minute, 50)
+	iterMgr := iterator.New(10*time.Minute, 1*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	// Simulate creating many iterators

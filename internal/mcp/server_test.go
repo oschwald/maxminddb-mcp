@@ -23,7 +23,7 @@ func TestNew(t *testing.T) {
 	}
 	defer func() { _ = dbManager.Close() }()
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -75,7 +75,7 @@ func TestNewWithUpdater(t *testing.T) {
 		t.Fatalf("Failed to create updater: %v", err)
 	}
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, updater, iterMgr)
@@ -100,7 +100,7 @@ func TestLookupIPInSingleDatabase(t *testing.T) {
 		t.Fatalf("Failed to load test database: %v", err)
 	}
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -158,7 +158,7 @@ func TestLookupIPInAllDatabases(t *testing.T) {
 		t.Fatalf("Failed to load test database 2: %v", err)
 	}
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -189,7 +189,7 @@ func TestServe(t *testing.T) {
 	}
 	defer func() { _ = dbManager.Close() }()
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -214,7 +214,7 @@ func TestRegisterTools(t *testing.T) {
 	}
 	defer func() { _ = dbManager.Close() }()
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	// This will call registerTools internally
@@ -253,7 +253,7 @@ func TestServerStructFields(t *testing.T) {
 	}
 	defer func() { _ = dbManager.Close() }()
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -295,7 +295,7 @@ func TestServerMethods(t *testing.T) {
 		t.Fatalf("Failed to load test database: %v", err)
 	}
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -336,7 +336,7 @@ func TestServerWithDifferentModes(t *testing.T) {
 	}
 	defer func() { _ = dbManager.Close() }()
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
@@ -387,7 +387,7 @@ func TestServerConcurrency(t *testing.T) {
 		t.Fatalf("Failed to load test database: %v", err)
 	}
 
-	iterMgr := iterator.New(30*time.Minute, 5*time.Minute, 100)
+	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
 	server := New(cfg, dbManager, nil, iterMgr)
