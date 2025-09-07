@@ -523,7 +523,7 @@ Query all IP addresses in a network range with powerful filtering capabilities.
 
 - `network` (required): CIDR network to scan (e.g., "192.168.1.0/24")
 - `database` (optional): Specific database to query
-- `filters` (optional): Array of filter conditions
+- `filters` (optional): Array of filter objects. Each object must include `field`, `operator`, and `value`.
 - `filter_mode` (optional): "and" (default) or "or"
 - `max_results` (optional): Maximum results to return (default: 1000)
 - `iterator_id` (optional): Resume existing iterator
@@ -567,6 +567,12 @@ Query all IP addresses in a network range with powerful filtering capabilities.
   }
 }
 ```
+
+Common mistakes and validation
+
+- Do not pass filters as strings like `"traits.user_type=residential"`. The server rejects this with `invalid_filter` and a hint to use objects: `{ "field": "traits.user_type", "operator": "equals", "value": "residential" }`.
+- `filters` must be an array of objects; other types are invalid.
+- `operator` must be supported (see list below). Short aliases (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`) are also accepted.
 
 **Complex filtering (non-proxy IPs):**
 

@@ -4,6 +4,7 @@ package mcp
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -71,7 +72,7 @@ func (s *Server) registerTools() {
 	lookupNetworkTool := mcp.NewTool(
 		"lookup_network",
 		mcp.WithDescription(
-			"Look up information for all IPs in a network range with optional filtering",
+			"Query a CIDR range with optional filters. filters must be an array of objects with keys: field, operator, value. Example: {\"field\":\"traits.user_type\",\"operator\":\"equals\",\"value\":\"residential\"}. Supported operators: equals, not_equals, in, not_in, contains, regex, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists.",
 		),
 		mcp.WithString(
 			"network",
@@ -79,7 +80,10 @@ func (s *Server) registerTools() {
 			mcp.Description("CIDR network to scan (e.g., '192.168.1.0/24')"),
 		),
 		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
-		mcp.WithArray("filters", mcp.Description("Array of filter conditions (optional)")),
+		mcp.WithArray(
+			"filters",
+			mcp.Description("Array of filter objects: {field, operator, value} (optional)"),
+		),
 		mcp.WithString(
 			"filter_mode",
 			mcp.Description("How to combine filters: 'and' or 'or' (default: 'and')"),
@@ -201,7 +205,15 @@ func (s *Server) handleLookupNetwork(
 	}
 
 	// Parse filters from request
-	filters := parseFiltersFromRequest(request)
+	filters, parseErr := parseFiltersFromRequest(request)
+	if parseErr != nil {
+		return mcp.NewToolResultStructuredOnly(map[string]any{
+			"error": map[string]any{
+				"code":    "invalid_filter",
+				"message": fmt.Sprintf("Invalid filters: %v", parseErr),
+			},
+		}), nil
+	}
 
 	// Validate filters
 	if err := filter.Validate(filters); err != nil {
@@ -380,41 +392,56 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 }
 
 // parseFiltersFromRequest extracts filters from MCP request arguments.
-func parseFiltersFromRequest(request mcp.CallToolRequest) []filter.Filter {
-	var filters []filter.Filter
+func parseFiltersFromRequest(request mcp.CallToolRequest) ([]filter.Filter, error) {
 	args := request.GetArguments()
 	filtersParam, exists := args["filters"]
 	if !exists {
-		return filters
+		return nil, nil
 	}
 
 	filtersArray, ok := filtersParam.([]any)
 	if !ok {
-		return filters
+		return nil, errors.New("filters must be an array of objects {field, operator, value}")
 	}
 
-	for _, filterItem := range filtersArray {
+	filters := make([]filter.Filter, 0, len(filtersArray))
+
+	for i, filterItem := range filtersArray {
 		filterMap, ok := filterItem.(map[string]any)
 		if !ok {
-			continue
+			// Provide a helpful hint if a string like "a=b" was provided
+			if s, sok := filterItem.(string); sok {
+				hint := buildFilterHintFromString(s)
+				return nil, fmt.Errorf(
+					"filters[%d] must be an object {field, operator, value}; got string. %s",
+					i,
+					hint,
+				)
+			}
+			return nil, fmt.Errorf("filters[%d] must be an object {field, operator, value}", i)
 		}
 
 		field, _ := filterMap["field"].(string)
 		operator, _ := filterMap["operator"].(string)
 		value := filterMap["value"]
 
-		if field != "" && operator != "" {
-			// Normalize operator with case-insensitive aliases
-			normalizedOp := normalizeOperator(operator)
-			filters = append(filters, filter.Filter{
-				Field:    field,
-				Operator: normalizedOp,
-				Value:    value,
-			})
+		if field == "" || operator == "" {
+			return nil, fmt.Errorf(
+				"filters[%d] missing required keys: field and operator are required",
+				i,
+			)
 		}
+
+		// Normalize operator with case-insensitive aliases
+		normalizedOp := normalizeOperator(operator)
+		filters = append(filters, filter.Filter{
+			Field:    field,
+			Operator: normalizedOp,
+			Value:    value,
+		})
 	}
 
-	return filters
+	return filters, nil
 }
 
 // normalizeOperator normalizes operator names with case-insensitive aliases.
@@ -435,4 +462,32 @@ func normalizeOperator(op string) string {
 	default:
 		return strings.ToLower(op)
 	}
+}
+
+// buildFilterHintFromString suggests a structured filter when a string like
+// "traits.user_type=residential" is provided.
+func buildFilterHintFromString(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// Support a=b and a!=b for hinting
+	if idx := strings.Index(s, "!="); idx >= 0 {
+		field := strings.TrimSpace(s[:idx])
+		value := strings.TrimSpace(s[idx+2:])
+		if field != "" && value != "" {
+			return fmt.Sprintf(
+				"Did you mean: {\"field\":\"%s\", \"operator\":\"not_equals\", \"value\":\"%s\"}?",
+				field,
+				value,
+			)
+		}
+	} else if idx := strings.Index(s, "="); idx >= 0 {
+		field := strings.TrimSpace(s[:idx])
+		value := strings.TrimSpace(s[idx+1:])
+		if field != "" && value != "" {
+			return fmt.Sprintf("Did you mean: {\"field\":\"%s\", \"operator\":\"equals\", \"value\":\"%s\"}?", field, value)
+		}
+	}
+	return "Provide filters as objects: {field, operator, value}"
 }

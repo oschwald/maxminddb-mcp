@@ -55,7 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Configuration
 
- 
 - **Duplicate Database Detection**: Warnings for name collisions across directories
 - **Flexible Database Storage**: Configurable paths with automatic directory creation
 - **Network Timeout Handling**: Robust error handling for network operations
