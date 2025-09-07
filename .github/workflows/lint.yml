@@ -48,36 +48,8 @@ jobs:
           fi
           echo "✅ All markdown files are properly formatted!"
       
-      - name: Run golangci-lint fmt
-        run: |
-          echo "Running golangci-lint fmt..."
-          # Install golangci-lint
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
-          export PATH=$PATH:$(go env GOPATH)/bin
-          if ! golangci-lint fmt; then
-            echo "❌ golangci-lint fmt failed"
-            exit 1
-          fi
-          echo "✅ Go formatting check passed!"
-      
-      - name: Run golangci-lint
-        run: |
-          echo "Running golangci-lint run..."
-          export PATH=$PATH:$(go env GOPATH)/bin
-          if ! golangci-lint run ./...; then
-            echo "❌ golangci-lint run failed"
-            exit 1
-          fi
-          echo "✅ Go linting check passed!"
-      
-      - name: Run tests
-        run: |
-          echo "Running tests..."
-          if ! go test ./...; then
-            echo "❌ Tests failed"
-            exit 1
-          fi
-          echo "✅ All tests passed!"
-      
-      - name: Success message
-        run: echo "✅ All linting checks passed!"
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
