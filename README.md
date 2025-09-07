@@ -86,6 +86,23 @@ Alternative with existing GeoIP.conf:
 </details>
 
 <details>
+<summary>Claude Code CLI</summary>
+
+Add the MCP server to Claude Code CLI:
+
+```bash
+claude mcp add maxminddb maxminddb-mcp
+```
+
+To use with a custom config:
+
+```bash
+MAXMINDDB_MCP_CONFIG=/path/to/config.toml claude chat
+```
+
+</details>
+
+<details>
 <summary>Claude Code (VS Code Extension)</summary>
 
 Install the Claude Code extension and add to VS Code settings:
@@ -165,6 +182,48 @@ Install Cline and add to VS Code settings:
     }
   }
 }
+```
+
+</details>
+
+<details>
+<summary>Gemini CLI</summary>
+
+Add to your Gemini CLI configuration:
+
+```json
+{
+  "mcpServers": {
+    "maxminddb": {
+      "command": "maxminddb-mcp",
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
+      }
+    }
+  }
+}
+```
+
+See the [Gemini CLI MCP guide](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md) for more details.
+
+</details>
+
+<details>
+<summary>Codex</summary>
+
+Add to your Codex configuration file:
+
+```toml
+[mcp_servers.maxminddb]
+command = "maxminddb-mcp"
+env = { MAXMINDDB_MCP_CONFIG = "/path/to/your/config.toml" }
+```
+
+Or without custom config:
+
+```toml
+[mcp_servers.maxminddb]
+command = "maxminddb-mcp"
 ```
 
 </details>
