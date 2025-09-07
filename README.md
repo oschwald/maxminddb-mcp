@@ -1,6 +1,6 @@
-# MaxMind MMDB MCP Server
+# MaxMindDB MCP Server
 
-A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMind MMDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
+A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMindDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
 
 ## Features
 
@@ -875,4 +875,3 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 - **Issues**: [GitHub Issues](https://github.com/oschwald/maxminddb-mcp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/oschwald/maxminddb-mcp/discussions)
-- **MaxMind Support**: For database and account issues, contact [MaxMind Support](https://support.maxmind.com/)

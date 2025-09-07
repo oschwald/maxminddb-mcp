@@ -16,7 +16,25 @@ import (
 	"github.com/oschwald/maxminddb-mcp/internal/mcp"
 )
 
+// These variables are set by GoReleaser at build time.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
+	// Check for version flag
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("maxminddb-mcp %s (commit: %s, built: %s)\n", version, commit, date)
+		return
+	}
+
+	// Check for help flag
+	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
+		printHelp()
+		return
+	}
 	setupLogger()
 
 	// Load configuration using centralized loader
@@ -90,6 +108,36 @@ func main() {
 		slog.Error("Server error", "err", err)
 		return // Let main() exit naturally, defers will run
 	}
+}
+
+// printHelp displays usage information.
+func printHelp() {
+	fmt.Printf(`MaxMind MMDB MCP Server %s
+
+A powerful Model Context Protocol (MCP) server that provides comprehensive 
+geolocation and network intelligence through MaxMind MMDB databases.
+
+Usage:
+  maxminddb-mcp [flags]
+
+Flags:
+  -h, --help     Show this help message
+  -v, --version  Show version information
+
+Environment Variables:
+  MAXMINDDB_MCP_CONFIG      Path to configuration file
+  MAXMINDDB_MCP_LOG_LEVEL   Logging level (debug|info|warn|error)
+  MAXMINDDB_MCP_LOG_FORMAT  Log format (text|json)
+
+Configuration:
+  The server looks for configuration in this order:
+  1. MAXMINDDB_MCP_CONFIG environment variable
+  2. ~/.config/maxminddb-mcp/config.toml
+  3. /etc/GeoIP.conf or ~/.config/maxminddb-mcp/GeoIP.conf
+
+For more information, visit: https://github.com/oschwald/maxminddb-mcp
+
+`, version)
 }
 
 // setupLogger configures a global slog logger with simple env controls.

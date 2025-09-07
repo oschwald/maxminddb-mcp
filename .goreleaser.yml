@@ -1,0 +1,183 @@
+project_name: maxminddb-mcp
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: maxminddb-mcp
+    binary: maxminddb-mcp
+    main: ./cmd/maxminddb-mcp/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: 'Performance improvements'
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 2
+    - title: Others
+      order: 999
+
+dockers:
+  - image_templates:
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
+      - "--platform=linux/amd64"
+    goarch: amd64
+    
+  - image_templates:
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-arm64"
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-arm64"
+      
+  - name_template: "ghcr.io/oschwald/maxminddb-mcp:latest"
+    image_templates:
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-amd64"
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-arm64"
+
+
+nfpms:
+  - id: packages
+    package_name: maxminddb-mcp
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: MaxMind MMDB MCP Server
+    homepage: https://github.com/oschwald/maxminddb-mcp
+    maintainer: Greg Oschwald <oschwald@maxmind.com>
+    description: A powerful Model Context Protocol (MCP) server for MaxMind MMDB databases
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/maxminddb-mcp/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/maxminddb-mcp/README.md
+      - src: CHANGELOG.md
+        dst: /usr/share/doc/maxminddb-mcp/CHANGELOG.md
+
+release:
+  github:
+    owner: oschwald
+    name: maxminddb-mcp
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## MaxMind MMDB MCP Server {{ .Version }}
+    
+    This release includes binaries for multiple platforms and architectures.
+    
+    ### Container Images
+    
+    ```bash
+    # Pull the latest image
+    docker pull ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
+    
+    # Run the container
+    docker run -v ~/.config/maxminddb-mcp:/config ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
+    ```
+    
+  footer: |
+    ### Installation
+    
+    **Go Install:**
+    ```bash
+    go install github.com/oschwald/maxminddb-mcp/cmd/maxminddb-mcp@{{ .Version }}
+    ```
+    
+    **Docker:**
+    ```bash
+    docker pull ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
+    ```
+    
+    **Package Managers:**
+    - `.deb`, `.rpm`, and `.apk` packages available in release assets
+
+  name_template: "Release {{.Version}}"
