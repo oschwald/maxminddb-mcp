@@ -36,7 +36,9 @@ func SupportedOperators() []string {
 		"contains",
 		"regex",
 		"greater_than",
+		"greater_than_or_equal",
 		"less_than",
+		"less_than_or_equal",
 		"exists",
 	}
 }
@@ -103,8 +105,12 @@ func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
 		return matchesRegex(fieldValue, filter.Value)
 	case "greater_than":
 		return compareGreater(fieldValue, filter.Value)
+	case "greater_than_or_equal":
+		return compareGreaterEqual(fieldValue, filter.Value)
 	case "less_than":
 		return compareLess(fieldValue, filter.Value)
+	case "less_than_or_equal":
+		return compareLessEqual(fieldValue, filter.Value)
 	case "exists":
 		exists := fieldValue != nil
 		if boolValue, ok := filter.Value.(bool); ok {
@@ -220,6 +226,30 @@ func compareLess(fieldValue, filterValue any) bool {
 	}
 
 	return fieldNum < filterNum
+}
+
+// compareGreaterEqual compares if fieldValue >= filterValue.
+func compareGreaterEqual(fieldValue, filterValue any) bool {
+	fieldNum, err1 := toFloat64(fieldValue)
+	filterNum, err2 := toFloat64(filterValue)
+
+	if err1 != nil || err2 != nil {
+		return false
+	}
+
+	return fieldNum >= filterNum
+}
+
+// compareLessEqual compares if fieldValue <= filterValue.
+func compareLessEqual(fieldValue, filterValue any) bool {
+	fieldNum, err1 := toFloat64(fieldValue)
+	filterNum, err2 := toFloat64(filterValue)
+
+	if err1 != nil || err2 != nil {
+		return false
+	}
+
+	return fieldNum <= filterNum
 }
 
 // toFloat64 converts various numeric types to float64.

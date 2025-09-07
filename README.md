@@ -167,8 +167,19 @@ Look up information for all IPs in a network range with optional filtering.
 - `contains`: String contains substring
 - `regex`: Matches regular expression
 - `greater_than`: Numeric comparison
+- `greater_than_or_equal`: Numeric comparison (>=)
 - `less_than`: Numeric comparison
+- `less_than_or_equal`: Numeric comparison (<=)
 - `exists`: Field exists (boolean value)
+
+**Operator Aliases:**
+For convenience, short operator aliases are supported (case-insensitive):
+- `eq` → `equals`
+- `ne` → `not_equals`
+- `gt` → `greater_than`
+- `gte` → `greater_than_or_equal`
+- `lt` → `less_than`
+- `lte` → `less_than_or_equal`
 
 #### `list_databases`
 
@@ -193,6 +204,27 @@ Trigger manual update of MaxMind databases (MaxMind/GeoIP modes only).
   "arguments": {}
 }
 ```
+
+### Error Responses
+
+When errors occur, tools return structured error responses with machine-readable error codes:
+
+```json
+{
+  "error": {
+    "code": "db_not_found",
+    "message": "Database not found: invalid_db.mmdb"
+  }
+}
+```
+
+**Common Error Codes:**
+- `db_not_found`: Specified database does not exist
+- `invalid_ip`: IP address format is invalid
+- `invalid_network`: Network CIDR format is invalid
+- `invalid_filter`: Filter validation failed
+- `iterator_not_found`: Iterator ID not found or expired
+- `parse_error`: Failed to parse request parameters
 
 ### MCP Resources
 

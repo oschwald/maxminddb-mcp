@@ -288,6 +288,15 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 	// Store reader and metadata using absolute path as key
 	m.readers[absPath] = reader
 	m.databases[absPath] = dbInfo
+
+	// Check for duplicate display names and warn if found
+	if existingPath, exists := m.displayToPath[dbInfo.Name]; exists && existingPath != absPath {
+		slog.Warn("Duplicate database name detected",
+			"name", dbInfo.Name,
+			"existing_path", existingPath,
+			"new_path", absPath)
+	}
+
 	// Update display name to path mapping for O(1) lookups
 	m.displayToPath[dbInfo.Name] = absPath
 

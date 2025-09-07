@@ -258,6 +258,105 @@ func TestFilterEngine(t *testing.T) {
 	}
 }
 
+func TestFilterEngineComparisonOperators(t *testing.T) {
+	testData := map[string]any{
+		"traits": map[string]any{
+			"autonomous_system_number": 7922,
+		},
+	}
+
+	tests := []struct {
+		name        string
+		filters     []Filter
+		mode        Mode
+		shouldMatch bool
+	}{
+		{
+			name: "greater_than_or_equal match",
+			filters: []Filter{
+				{
+					Field:    "traits.autonomous_system_number",
+					Operator: "greater_than_or_equal",
+					Value:    7922,
+				},
+			},
+			mode:        ModeAnd,
+			shouldMatch: true,
+		},
+		{
+			name: "greater_than_or_equal exact match",
+			filters: []Filter{
+				{
+					Field:    "traits.autonomous_system_number",
+					Operator: "greater_than_or_equal",
+					Value:    7922,
+				},
+			},
+			mode:        ModeAnd,
+			shouldMatch: true,
+		},
+		{
+			name: "greater_than_or_equal no match",
+			filters: []Filter{
+				{
+					Field:    "traits.autonomous_system_number",
+					Operator: "greater_than_or_equal",
+					Value:    8000,
+				},
+			},
+			mode:        ModeAnd,
+			shouldMatch: false,
+		},
+		{
+			name: "less_than_or_equal match",
+			filters: []Filter{
+				{
+					Field:    "traits.autonomous_system_number",
+					Operator: "less_than_or_equal",
+					Value:    8000,
+				},
+			},
+			mode:        ModeAnd,
+			shouldMatch: true,
+		},
+		{
+			name: "less_than_or_equal exact match",
+			filters: []Filter{
+				{
+					Field:    "traits.autonomous_system_number",
+					Operator: "less_than_or_equal",
+					Value:    7922,
+				},
+			},
+			mode:        ModeAnd,
+			shouldMatch: true,
+		},
+		{
+			name: "less_than_or_equal no match",
+			filters: []Filter{
+				{
+					Field:    "traits.autonomous_system_number",
+					Operator: "less_than_or_equal",
+					Value:    7000,
+				},
+			},
+			mode:        ModeAnd,
+			shouldMatch: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			engine := New(test.filters, test.mode)
+			result := engine.Matches(testData)
+
+			if result != test.shouldMatch {
+				t.Errorf("Expected %v, got %v", test.shouldMatch, result)
+			}
+		})
+	}
+}
+
 func TestGetNestedField(t *testing.T) {
 	data := map[string]any{
 		"level1": map[string]any{
@@ -424,7 +523,7 @@ func TestSupportedOperators(t *testing.T) {
 
 	expectedOperators := []string{
 		"equals", "not_equals", "in", "not_in", "contains",
-		"regex", "greater_than", "less_than", "exists",
+		"regex", "greater_than", "greater_than_or_equal", "less_than", "less_than_or_equal", "exists",
 	}
 
 	if len(operators) != len(expectedOperators) {

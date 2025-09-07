@@ -109,6 +109,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid iterator_cleanup_interval: %w", err)
 	}
 
+	// Validate and clamp IteratorBuffer
+	if c.IteratorBuffer <= 0 {
+		c.IteratorBuffer = 100 // Default buffer size
+	}
+
 	// Mode-specific validation
 	switch c.Mode {
 	case ModeMaxMind:
