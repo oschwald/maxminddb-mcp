@@ -33,7 +33,22 @@ type ManagedIterator struct {
 	Filters      []filter.Filter
 	Processed    int64
 	Matched      int64
+	mu           sync.RWMutex
 	done         bool
+}
+
+// isDone safely checks if the iterator is done.
+func (iter *ManagedIterator) isDone() bool {
+	iter.mu.RLock()
+	defer iter.mu.RUnlock()
+	return iter.done
+}
+
+// setDone safely sets the iterator as done.
+func (iter *ManagedIterator) setDone() {
+	iter.mu.Lock()
+	defer iter.mu.Unlock()
+	iter.done = true
 }
 
 // ResumeToken contains information needed to resume iteration.
@@ -200,7 +215,7 @@ func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*Iteration
 		case result, ok := <-iterator.networks:
 			if !ok {
 				// Channel closed, no more results
-				iterator.done = true
+				iterator.setDone()
 				break
 			}
 
@@ -245,7 +260,7 @@ endLoop:
 		Results:            results,
 		IteratorID:         iterator.ID,
 		ResumeToken:        resumeToken,
-		HasMore:            !iterator.done,
+		HasMore:            !iterator.isDone(),
 		TotalProcessed:     iterator.Processed,
 		TotalMatched:       iterator.Matched,
 		EstimatedRemaining: -1, // Can't estimate with streaming
@@ -259,9 +274,9 @@ func (m *Manager) RemoveIterator(id string) {
 
 	if iter, exists := m.iterators[id]; exists {
 		// Signal the streaming goroutine to stop
-		if !iter.done {
+		if !iter.isDone() {
 			close(iter.stop)
-			iter.done = true
+			iter.setDone()
 		}
 		delete(m.iterators, id)
 	}
@@ -276,9 +291,9 @@ func (m *Manager) cleanupExpired() {
 	for id, iterator := range m.iterators {
 		if now.Sub(iterator.LastAccess) > m.ttl {
 			// Signal the streaming goroutine to stop
-			if !iterator.done {
+			if !iterator.isDone() {
 				close(iterator.stop)
-				iterator.done = true
+				iterator.setDone()
 			}
 			delete(m.iterators, id)
 		}
@@ -392,7 +407,7 @@ func normalizeFilterMode(mode string) string {
 // startStreaming begins streaming networks from the MMDB reader to the channel.
 func (iter *ManagedIterator) startStreaming() {
 	defer func() {
-		iter.done = true
+		iter.setDone()
 		close(iter.networks)
 	}()
 
@@ -402,7 +417,7 @@ func (iter *ManagedIterator) startStreaming() {
 
 	for result := range iter.Reader.NetworksWithin(iter.Network) {
 		// Check if we should stop early
-		if iter.done {
+		if iter.isDone() {
 			break
 		}
 
