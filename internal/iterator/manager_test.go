@@ -47,7 +47,6 @@ func TestCreateIterator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -119,7 +118,6 @@ func TestCreateIteratorWithoutFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -159,7 +157,6 @@ func TestGetIterator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -191,7 +188,6 @@ func TestIterate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	// Use a small network that should have data in the test DB
 	network, err := netip.ParsePrefix("1.0.0.0/24")
@@ -241,7 +237,6 @@ func TestIterateWithFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/24")
 	if err != nil {
@@ -252,7 +247,7 @@ func TestIterateWithFilters(t *testing.T) {
 	filters := []filter.Filter{
 		{
 			Field:    "autonomous_system_number",
-			Operator: "gt",
+			Operator: "greater_than",
 			Value:    float64(0),
 		},
 	}
@@ -284,7 +279,6 @@ func TestRemoveIterator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -338,7 +332,6 @@ func TestCleanupExpiredIterators(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -377,7 +370,6 @@ func TestGenerateResumeToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -478,7 +470,6 @@ func TestIteratorConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -528,7 +519,6 @@ func TestMultipleIterators(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/8")
 	if err != nil {
@@ -626,7 +616,7 @@ func TestManagedIteratorFields(t *testing.T) {
 func TestResumeTokenFields(t *testing.T) {
 	// Test ResumeToken struct fields
 	filters := []filter.Filter{
-		{Field: "test", Operator: "eq", Value: "value"},
+		{Field: "test", Operator: "equals", Value: "value"},
 	}
 
 	token := ResumeToken{
@@ -637,7 +627,6 @@ func TestResumeTokenFields(t *testing.T) {
 		Filters:     filters,
 		Processed:   100,
 		Matched:     50,
-		ResultIndex: 10,
 	}
 
 	if token.Database != testDB {
@@ -668,9 +657,7 @@ func TestResumeTokenFields(t *testing.T) {
 		t.Error("Matched field not set correctly")
 	}
 
-	if token.ResultIndex != 10 {
-		t.Error("ResultIndex field not set correctly")
-	}
+	// ResultIndex field removed in streaming version
 }
 
 func TestNetworkResultFields(t *testing.T) {

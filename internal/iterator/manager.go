@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,21 +19,21 @@ import (
 
 // ManagedIterator represents a stateful iterator with metadata.
 type ManagedIterator struct {
-	LastAccess     time.Time
-	Created        time.Time
-	FilterEngine   *filter.Engine
-	Reader         *maxminddb.Reader
-	Network        netip.Prefix
-	LastNetwork    netip.Prefix
-	FilterMode     string
-	ID             string
-	Database       string
-	Filters        []filter.Filter
-	currentResults []maxminddb.Result
-	Processed      int64
-	Matched        int64
-	resultIndex    int
-	initialized    bool
+	Created      time.Time
+	LastAccess   time.Time
+	networks     chan maxminddb.Result
+	stop         chan struct{}
+	FilterEngine *filter.Engine
+	Reader       *maxminddb.Reader
+	Network      netip.Prefix
+	LastNetwork  netip.Prefix
+	FilterMode   string
+	Database     string
+	ID           string
+	Filters      []filter.Filter
+	Processed    int64
+	Matched      int64
+	done         bool
 }
 
 // ResumeToken contains information needed to resume iteration.
@@ -44,7 +45,6 @@ type ResumeToken struct {
 	Filters     []filter.Filter `json:"filters"`
 	Processed   int64           `json:"processed"`
 	Matched     int64           `json:"matched"`
-	ResultIndex int             `json:"result_index"`
 }
 
 // NetworkResult represents a single network result.
@@ -113,36 +113,13 @@ func (m *Manager) CreateIterator(
 	filters []filter.Filter,
 	filterMode string,
 ) (*ManagedIterator, error) {
-	// Store reader for later iteration
-	_ = reader // Reader will be used during iteration
-
-	// Create filter engine
-	var filterEngine *filter.Engine
-	if len(filters) > 0 {
-		filterEngine = filter.New(filters, filter.Mode(filterMode))
-	}
-
-	// Generate unique ID
-	id, err := generateID()
+	iterator, err := m.createIteratorNoStart(reader, database, network, filters, filterMode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate iterator ID: %w", err)
+		return nil, err
 	}
 
-	iterator := &ManagedIterator{
-		ID:           id,
-		Reader:       reader,
-		Database:     database,
-		Network:      network,
-		Filters:      filters,
-		FilterMode:   filterMode,
-		FilterEngine: filterEngine,
-		Created:      time.Now(),
-		LastAccess:   time.Now(),
-	}
-
-	m.mu.Lock()
-	m.iterators[id] = iterator
-	m.mu.Unlock()
+	// Start streaming networks in the background
+	go iterator.startStreaming()
 
 	return iterator, nil
 }
@@ -161,8 +138,8 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 		return nil, fmt.Errorf("invalid network in resume token: %w", err)
 	}
 
-	// Create new iterator
-	iterator, err := m.CreateIterator(
+	// Create iterator without starting streaming
+	iterator, err := m.createIteratorNoStart(
 		reader,
 		resumeToken.Database,
 		network,
@@ -173,19 +150,11 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 		return nil, err
 	}
 
-	// Initialize the iterator and restore state
-	iterator.currentResults = make([]maxminddb.Result, 0, 10000) // Pre-allocate reasonable size
-	for result := range iterator.Reader.NetworksWithin(iterator.Network) {
-		iterator.currentResults = append(iterator.currentResults, result)
-	}
-	iterator.initialized = true
-
 	// Restore state from token
 	iterator.Processed = resumeToken.Processed
 	iterator.Matched = resumeToken.Matched
-	iterator.resultIndex = resumeToken.ResultIndex
 
-	// Restore last network if available
+	// Restore last network if available for resume point
 	if resumeToken.LastNetwork != "" {
 		lastNetwork, err := netip.ParsePrefix(resumeToken.LastNetwork)
 		if err != nil {
@@ -194,13 +163,16 @@ func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*Manag
 		iterator.LastNetwork = lastNetwork
 	}
 
+	// Start streaming from the resume point (only once, with proper state)
+	go iterator.startStreaming()
+
 	return iterator, nil
 }
 
 // GetIterator retrieves an existing iterator by ID.
 func (m *Manager) GetIterator(id string) (*ManagedIterator, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	iterator, exists := m.iterators[id]
 	if exists {
@@ -210,7 +182,7 @@ func (m *Manager) GetIterator(id string) (*ManagedIterator, bool) {
 	return iterator, exists
 }
 
-// Iterate performs one iteration batch.
+// Iterate performs one iteration batch using streaming.
 func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*IterationResult, error) {
 	if iterator == nil {
 		return nil, errors.New("iterator cannot be nil")
@@ -220,61 +192,61 @@ func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*Iteration
 
 	results := make([]NetworkResult, 0, maxResults)
 
-	// Initialize results if not done yet
-	if !iterator.initialized {
-		iterator.currentResults = make([]maxminddb.Result, 0, 10000) // Pre-allocate reasonable size
-		for result := range iterator.Reader.NetworksWithin(iterator.Network) {
-			iterator.currentResults = append(iterator.currentResults, result)
-		}
-		iterator.initialized = true
-	}
-
-	// Process results starting from current index
-	for iterator.resultIndex < len(iterator.currentResults) && len(results) < maxResults {
-		result := iterator.currentResults[iterator.resultIndex]
-		iterator.resultIndex++
-		iterator.Processed++
-
-		// Decode the result data
-		var record map[string]any
-		if err := result.Decode(&record); err != nil {
-			// Skip records that can't be decoded
-			continue
-		}
-
-		iterator.LastNetwork = result.Prefix()
-
-		// Apply filters if present
-		if iterator.FilterEngine != nil {
-			if !iterator.FilterEngine.Matches(record) {
-				continue // Skip non-matching records
+	// Stream results from the channel
+	for len(results) < maxResults {
+		select {
+		case result, ok := <-iterator.networks:
+			if !ok {
+				// Channel closed, no more results
+				iterator.done = true
+				break
 			}
+
+			iterator.Processed++
+
+			// Decode the result data
+			var record map[string]any
+			if err := result.Decode(&record); err != nil {
+				// Skip records that can't be decoded
+				continue
+			}
+
+			iterator.LastNetwork = result.Prefix()
+
+			// Apply filters if present
+			if iterator.FilterEngine != nil {
+				if !iterator.FilterEngine.Matches(record) {
+					continue // Skip non-matching records
+				}
+			}
+
+			iterator.Matched++
+
+			results = append(results, NetworkResult{
+				Network: result.Prefix(),
+				Data:    record,
+			})
+		default:
+			// No more results available immediately, exit the loop
+			goto endLoop
 		}
-
-		iterator.Matched++
-
-		results = append(results, NetworkResult{
-			Network: result.Prefix(),
-			Data:    record,
-		})
 	}
 
+endLoop:
 	// Generate resume token
 	resumeToken, err := m.generateResumeToken(iterator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate resume token: %w", err)
 	}
 
-	hasMore := iterator.resultIndex < len(iterator.currentResults)
-
 	return &IterationResult{
 		Results:            results,
 		IteratorID:         iterator.ID,
 		ResumeToken:        resumeToken,
-		HasMore:            hasMore,
+		HasMore:            !iterator.done,
 		TotalProcessed:     iterator.Processed,
 		TotalMatched:       iterator.Matched,
-		EstimatedRemaining: int64(len(iterator.currentResults) - iterator.resultIndex),
+		EstimatedRemaining: -1, // Can't estimate with streaming
 	}, nil
 }
 
@@ -283,7 +255,14 @@ func (m *Manager) RemoveIterator(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	delete(m.iterators, id)
+	if iter, exists := m.iterators[id]; exists {
+		// Signal the streaming goroutine to stop
+		if !iter.done {
+			close(iter.stop)
+			iter.done = true
+		}
+		delete(m.iterators, id)
+	}
 }
 
 // cleanupExpired removes expired iterators.
@@ -294,6 +273,11 @@ func (m *Manager) cleanupExpired() {
 	now := time.Now()
 	for id, iterator := range m.iterators {
 		if now.Sub(iterator.LastAccess) > m.ttl {
+			// Signal the streaming goroutine to stop
+			if !iterator.done {
+				close(iterator.stop)
+				iterator.done = true
+			}
 			delete(m.iterators, id)
 		}
 	}
@@ -302,13 +286,12 @@ func (m *Manager) cleanupExpired() {
 // generateResumeToken creates a resume token from the current iterator state.
 func (*Manager) generateResumeToken(iterator *ManagedIterator) (string, error) {
 	token := ResumeToken{
-		Database:    iterator.Database,
-		Network:     iterator.Network.String(),
-		Filters:     iterator.Filters,
-		FilterMode:  iterator.FilterMode,
-		Processed:   iterator.Processed,
-		Matched:     iterator.Matched,
-		ResultIndex: iterator.resultIndex,
+		Database:   iterator.Database,
+		Network:    iterator.Network.String(),
+		Filters:    iterator.Filters,
+		FilterMode: iterator.FilterMode,
+		Processed:  iterator.Processed,
+		Matched:    iterator.Matched,
 	}
 
 	if iterator.LastNetwork.IsValid() {
@@ -338,6 +321,51 @@ func (*Manager) parseResumeToken(tokenStr string) (*ResumeToken, error) {
 	return &token, nil
 }
 
+// createIteratorNoStart creates a new iterator without starting streaming.
+func (m *Manager) createIteratorNoStart(
+	reader *maxminddb.Reader,
+	database string,
+	network netip.Prefix,
+	filters []filter.Filter,
+	filterMode string,
+) (*ManagedIterator, error) {
+	// Normalize filter mode to "and" or "or", default to "and"
+	normalizedMode := normalizeFilterMode(filterMode)
+
+	// Create filter engine
+	var filterEngine *filter.Engine
+	if len(filters) > 0 {
+		filterEngine = filter.New(filters, filter.Mode(normalizedMode))
+	}
+
+	// Generate unique ID
+	id, err := generateID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate iterator ID: %w", err)
+	}
+
+	iterator := &ManagedIterator{
+		ID:           id,
+		Reader:       reader,
+		Database:     database,
+		Network:      network,
+		Filters:      filters,
+		FilterMode:   normalizedMode,
+		FilterEngine: filterEngine,
+		Created:      time.Now(),
+		LastAccess:   time.Now(),
+		networks:     make(chan maxminddb.Result, 100), // Buffered channel for streaming
+		stop:         make(chan struct{}),
+		done:         false,
+	}
+
+	m.mu.Lock()
+	m.iterators[id] = iterator
+	m.mu.Unlock()
+
+	return iterator, nil
+}
+
 // generateID generates a random iterator ID.
 func generateID() (string, error) {
 	bytes := make([]byte, 16)
@@ -345,4 +373,61 @@ func generateID() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+// normalizeFilterMode normalizes filter mode to "and" or "or", defaulting to "and".
+func normalizeFilterMode(mode string) string {
+	switch strings.ToLower(mode) {
+	case string(filter.ModeAnd):
+		return string(filter.ModeAnd)
+	case string(filter.ModeOr):
+		return string(filter.ModeOr)
+	default:
+		return string(filter.ModeAnd) // Default to "and" for unknown values
+	}
+}
+
+// startStreaming begins streaming networks from the MMDB reader to the channel.
+func (iter *ManagedIterator) startStreaming() {
+	defer func() {
+		iter.done = true
+		close(iter.networks)
+	}()
+
+	// If we have a LastNetwork from resume token, we need to skip to that point
+	skipUntil := iter.LastNetwork
+	skipping := skipUntil.IsValid()
+
+	for result := range iter.Reader.NetworksWithin(iter.Network) {
+		// Check if we should stop early
+		if iter.done {
+			break
+		}
+
+		// Skip networks until we reach the resume point
+		if skipping {
+			if result.Prefix() != skipUntil {
+				continue
+			}
+			skipping = false
+			// Don't continue here - we want to emit the resume network
+		}
+
+		select {
+		case iter.networks <- result:
+			// Successfully sent result
+		case <-iter.stop:
+			// Iterator was stopped, exit goroutine
+			return
+		default:
+			// Channel buffer is full, block until space is available or stop signal
+			select {
+			case iter.networks <- result:
+				// Successfully sent result
+			case <-iter.stop:
+				// Iterator was stopped, exit goroutine
+				return
+			}
+		}
+	}
 }

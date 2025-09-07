@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -60,17 +63,18 @@ func (m *Manager) LoadDirectory(dir string) error {
 		return fmt.Errorf("directory does not exist: %s", dir)
 	}
 
-	// Walk the directory looking for .mmdb files
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	// Walk the directory looking for .mmdb files and subdirectories to watch
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".mmdb") {
-			if loadErr := m.loadDatabase(path, info); loadErr != nil {
-				// Log error but continue processing other files
-				fmt.Fprintf(os.Stderr, "Failed to load database %s: %v\n", path, loadErr)
-			}
+		if d.IsDir() && path != dir {
+			return m.watchSubdirectory(path)
+		}
+
+		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mmdb") {
+			return m.loadMMDBFile(path, d)
 		}
 
 		return nil
@@ -123,41 +127,76 @@ func (m *Manager) StartWatching() {
 					event.Op&fsnotify.Create == fsnotify.Create {
 					if strings.HasSuffix(strings.ToLower(event.Name), ".mmdb") {
 						if err := m.LoadDatabase(event.Name); err != nil {
-							fmt.Printf("Failed to load database %s: %v\n", event.Name, err)
+							slog.Warn(
+								"Failed to load database on event",
+								"path",
+								event.Name,
+								"err",
+								err,
+							)
 						}
 					}
 				}
 
 				if event.Op&fsnotify.Remove == fsnotify.Remove {
-					m.RemoveDatabase(filepath.Base(event.Name))
+					// Convert to absolute path for removal
+					absPath, err := filepath.Abs(event.Name)
+					if err != nil {
+						absPath = event.Name
+					}
+					m.RemoveDatabaseByPath(absPath)
+				}
+
+				if event.Op&fsnotify.Rename == fsnotify.Rename {
+					// Handle rename as remove - the old path is no longer valid
+					absPath, err := filepath.Abs(event.Name)
+					if err != nil {
+						absPath = event.Name
+					}
+					m.RemoveDatabaseByPath(absPath)
+
+					// Note: We don't try to reload here because event.Name is the old path.
+					// If the file was renamed within a watched directory, we'll get a
+					// subsequent Create event for the new path.
 				}
 
 			case err, ok := <-m.watcher.Errors:
 				if !ok {
 					return
 				}
-				fmt.Fprintf(os.Stderr, "Watcher error: %v\n", err)
+				slog.Error("Watcher error", "err", err)
 			}
 		}
 	}()
 }
 
-// GetReader returns a reader for the specified database.
+// GetReader returns a reader for the specified database by display name.
 func (m *Manager) GetReader(name string) (*maxminddb.Reader, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	reader, exists := m.readers[name]
-	return reader, exists
+	// Find database by display name and return its reader
+	for path, db := range m.databases {
+		if db.Name == name {
+			reader, exists := m.readers[path]
+			return reader, exists
+		}
+	}
+	return nil, false
 }
 
-// GetDatabase returns database info for the specified database.
+// GetDatabase returns database info for the specified database by display name.
 func (m *Manager) GetDatabase(name string) (*Info, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	db, exists := m.databases[name]
-	return db, exists
+	// Find database by display name
+	for _, db := range m.databases {
+		if db.Name == name {
+			return db, true
+		}
+	}
+	return nil, false
 }
 
 // ListDatabases returns all available databases.
@@ -165,36 +204,48 @@ func (m *Manager) ListDatabases() []*Info {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	result := make([]*Info, 0, len(m.databases))
-	for _, db := range m.databases {
-		result = append(result, db)
-	}
-
-	return result
+	return slices.Collect(maps.Values(m.databases))
 }
 
-// RemoveDatabase removes a database from the manager.
+// RemoveDatabase removes a database by display name from the manager.
 func (m *Manager) RemoveDatabase(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if reader, exists := m.readers[name]; exists {
-		_ = reader.Close()
-		delete(m.readers, name)
+	// Find database by display name
+	for path, db := range m.databases {
+		if db.Name == name {
+			// Remove from maps but don't close reader - let GC handle it
+			// since iterators may still be using the reader
+			delete(m.readers, path)
+			delete(m.databases, path)
+			break
+		}
 	}
-
-	delete(m.databases, name)
 }
 
-// Close closes all database readers and the file watcher.
+// RemoveDatabaseByPath removes a database by absolute path from the manager.
+func (m *Manager) RemoveDatabaseByPath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Remove from maps but don't close reader - let GC handle it
+	// since iterators may still be using the reader
+	delete(m.readers, path)
+	delete(m.databases, path)
+}
+
+// Close closes the file watcher and clears the database maps.
+// Readers are not explicitly closed to avoid races with active iterators;
+// they will be garbage collected when no longer referenced.
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Close all readers
-	for _, reader := range m.readers {
-		_ = reader.Close()
-	}
+	// Clear maps but don't close readers - let GC handle them
+	// since iterators may still be using the readers
+	m.readers = make(map[string]*maxminddb.Reader)
+	m.databases = make(map[string]*Info)
 
 	// Close watcher
 	return m.watcher.Close()
@@ -208,29 +259,31 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 		return fmt.Errorf("failed to open MMDB file %s: %w", path, err)
 	}
 
-	name := filepath.Base(path)
-
-	// Close existing reader if present
-	if existingReader, exists := m.readers[name]; exists {
-		_ = existingReader.Close()
+	// Use absolute path as key to avoid collisions
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path // fallback to original path
 	}
 
-	// Create database info
+	// Don't close existing reader - let GC handle it since iterators may be using it
+	// Just replace it in the map
+
+	name := filepath.Base(path)
 	dbType := inferDatabaseType(name)
 	description := getDatabaseDescription(dbType)
 
 	dbInfo := &Info{
-		Name:        name,
+		Name:        name, // Display name remains the base filename
 		Type:        dbType,
 		Description: description,
 		LastUpdated: info.ModTime(),
 		Size:        info.Size(),
-		Path:        path,
+		Path:        absPath, // Store absolute path
 	}
 
-	// Store reader and metadata
-	m.readers[name] = reader
-	m.databases[name] = dbInfo
+	// Store reader and metadata using absolute path as key
+	m.readers[absPath] = reader
+	m.databases[absPath] = dbInfo
 
 	return nil
 }
@@ -286,4 +339,28 @@ func getDatabaseDescription(dbType string) string {
 	}
 
 	return descriptions["Unknown"]
+}
+
+// watchSubdirectory adds a subdirectory to the watcher.
+func (m *Manager) watchSubdirectory(path string) error {
+	if watchErr := m.watcher.Add(path); watchErr != nil {
+		slog.Warn("Failed to watch subdirectory", "path", path, "err", watchErr)
+		return nil // Continue processing other directories
+	}
+	m.watchDirs = append(m.watchDirs, path)
+	return nil
+}
+
+// loadMMDBFile loads a single MMDB file entry.
+func (m *Manager) loadMMDBFile(path string, d os.DirEntry) error {
+	info, statErr := d.Info()
+	if statErr != nil {
+		slog.Warn("Failed to get file info", "path", path, "err", statErr)
+		return nil // Continue processing other files
+	}
+	if loadErr := m.loadDatabase(path, info); loadErr != nil {
+		// Log error but continue processing other files
+		slog.Warn("Failed to load database", "path", path, "err", loadErr)
+	}
+	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,21 +111,22 @@ func (u *Updater) StartScheduledUpdates(ctx context.Context) {
 			case <-ticker.C:
 				results, err := u.UpdateAll(ctx)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Scheduled update failed: %v\n", err)
+					slog.Error("Scheduled update failed", "err", err)
 					continue
 				}
 
 				// Log update results
 				for _, result := range results {
 					if result.Error != "" {
-						fmt.Fprintf(
-							os.Stderr,
-							"Update error for %s: %s\n",
+						slog.Error(
+							"Database update error",
+							"edition",
 							result.Database,
+							"error",
 							result.Error,
 						)
 					} else if result.Updated {
-						fmt.Fprintf(os.Stderr, "Updated %s (size: %d bytes)\n", result.Database, result.Size)
+						slog.Info("Database updated", "edition", result.Database, "size", result.Size)
 					}
 				}
 			}
@@ -250,20 +252,26 @@ func (u *Updater) saveChecksums() {
 
 	// Create directory if needed
 	if err := os.MkdirAll(filepath.Dir(checksumFile), 0o750); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create checksum directory: %v\n", err)
+		slog.Error(
+			"Failed to create checksum directory",
+			"dir",
+			filepath.Dir(checksumFile),
+			"err",
+			err,
+		)
 		return
 	}
 
 	file, err := os.Create(checksumFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create checksum file: %v\n", err)
+		slog.Error("Failed to create checksum file", "path", checksumFile, "err", err)
 		return
 	}
 	defer func() { _ = file.Close() }()
 
 	for edition, checksum := range u.checksums {
 		if _, err := fmt.Fprintf(file, "%s:%s\n", edition, checksum); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to write checksum for %s: %v\n", edition, err)
+			slog.Error("Failed to write checksum", "edition", edition, "err", err)
 		}
 	}
 }

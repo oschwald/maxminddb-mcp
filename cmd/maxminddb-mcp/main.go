@@ -4,10 +4,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/oschwald/maxminddb-mcp/internal/config"
@@ -17,49 +17,34 @@ import (
 )
 
 func main() {
-	// Look for config file
-	var cfg *config.Config
-	var err error
+	setupLogger()
 
-	// Try to load from standard locations
-	configPath := findConfigFile()
-	if configPath != "" {
-		cfg, err = config.LoadConfig(configPath)
-		if err != nil {
-			log.Fatalf("Failed to load config from %s: %v", configPath, err)
-		}
-	} else {
-		// Use default config
-		cfg = config.DefaultConfig()
-	}
-
-	// Expand paths
-	if err := cfg.ExpandPaths(); err != nil {
-		log.Fatalf("Failed to expand paths: %v", err)
-	}
-
-	// Validate config
-	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Config validation failed: %v", err)
+	// Load configuration using centralized loader
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("Failed to load config", "err", err)
+		os.Exit(1)
 	}
 
 	// Create database manager
 	dbManager, err := database.New()
 	if err != nil {
-		log.Fatalf("Failed to create database manager: %v", err)
+		slog.Error("Failed to create database manager", "err", err)
+		os.Exit(1)
 	}
 
 	// Initialize databases based on mode
 	if err := initializeDatabases(cfg, dbManager); err != nil {
-		log.Fatalf("Failed to initialize databases: %v", err)
+		slog.Error("Failed to initialize databases", "err", err)
+		os.Exit(1)
 	}
 
 	// Create updater if needed
 	var updater *database.Updater
-	if cfg.Mode == "maxmind" || cfg.Mode == "geoip_compat" {
+	if cfg.Mode == config.ModeMaxMind || cfg.Mode == config.ModeGeoIPCompat {
 		updater, err = database.NewUpdater(cfg, dbManager)
 		if err != nil {
-			log.Printf("Warning: Failed to create updater: %v", err)
+			slog.Warn("Failed to create updater", "err", err)
 		}
 	}
 
@@ -86,59 +71,52 @@ func main() {
 
 	go func() {
 		<-sigChan
-		log.Println("Shutting down...")
+		slog.Info("Shutting down...")
 		cancel()
 	}()
+
+	// Log startup summary
+	logStartupSummary(cfg, dbManager, updater != nil)
 
 	// Create and start MCP server (blocks until client disconnects)
 	server := mcp.New(cfg, dbManager, updater, iterMgr)
 	err = server.Serve()
 	cancel() // Always call cancel before exiting
 	if err != nil {
-		log.Printf("Server error: %v", err)
+		slog.Error("Server error", "err", err)
 		return // Let main() exit naturally, defers will run
 	}
 }
 
-func findConfigFile() string {
-	// Check environment variable first (highest precedence)
-	if envConfig := os.Getenv("MAXMINDDB_MCP_CONFIG"); envConfig != "" {
-		if _, err := os.Stat(envConfig); err == nil {
-			return envConfig
-		}
-		log.Printf(
-			"Warning: Config file specified in MAXMINDDB_MCP_CONFIG not found: %s",
-			envConfig,
-		)
+// setupLogger configures a global slog logger with simple env controls.
+func setupLogger() {
+	format := strings.ToLower(os.Getenv("MAXMINDDB_MCP_LOG_FORMAT"))  // "text" (default) or "json"
+	levelStr := strings.ToLower(os.Getenv("MAXMINDDB_MCP_LOG_LEVEL")) // debug|info|warn|error
+	var lvl slog.Level
+	switch levelStr {
+	case "debug":
+		lvl = slog.LevelDebug
+	case "warn":
+		lvl = slog.LevelWarn
+	case "error":
+		lvl = slog.LevelError
+	default:
+		lvl = slog.LevelInfo
 	}
 
-	// Standard config locations
-	locations := []string{
-		"./maxminddb-mcp.toml",
-		"./config.toml",
+	var handler slog.Handler
+	opts := &slog.HandlerOptions{Level: lvl}
+	if format == "json" {
+		handler = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stderr, opts)
 	}
-
-	// Add user config directory
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		userConfig := filepath.Join(homeDir, ".config", "maxminddb-mcp", "config.toml")
-		locations = append(locations, userConfig)
-	}
-
-	// Add system config
-	locations = append(locations, "/etc/maxminddb-mcp/config.toml")
-
-	for _, path := range locations {
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-
-	return ""
+	slog.SetDefault(slog.New(handler))
 }
 
 func initializeDatabases(cfg *config.Config, dbManager *database.Manager) error {
 	switch cfg.Mode {
-	case "maxmind", "geoip_compat":
+	case config.ModeMaxMind, config.ModeGeoIPCompat:
 		// Ensure database directory exists
 		if err := os.MkdirAll(cfg.MaxMind.DatabaseDir, 0o750); err != nil {
 			return fmt.Errorf("failed to create database directory: %w", err)
@@ -150,7 +128,7 @@ func initializeDatabases(cfg *config.Config, dbManager *database.Manager) error 
 		}
 		return dbManager.WatchDirectory(cfg.MaxMind.DatabaseDir)
 
-	case "directory":
+	case config.ModeDirectory:
 		// Load all configured directories
 		for _, path := range cfg.Directory.Paths {
 			if err := dbManager.LoadDirectory(path); err != nil {
@@ -164,5 +142,48 @@ func initializeDatabases(cfg *config.Config, dbManager *database.Manager) error 
 
 	default:
 		return fmt.Errorf("unknown mode: %s", cfg.Mode)
+	}
+}
+
+func logStartupSummary(cfg *config.Config, dbManager *database.Manager, autoUpdateEnabled bool) {
+	databases := dbManager.ListDatabases()
+
+	slog.Info("MaxMind MMDB MCP Server starting",
+		"mode", cfg.Mode,
+		"databases_loaded", len(databases),
+		"auto_update_enabled", autoUpdateEnabled,
+		"iterator_ttl", cfg.IteratorTTL,
+		"iterator_cleanup_interval", cfg.IteratorCleanupInterval,
+	)
+
+	switch cfg.Mode {
+	case config.ModeMaxMind, config.ModeGeoIPCompat:
+		slog.Info("MaxMind mode configuration",
+			"database_dir", cfg.MaxMind.DatabaseDir,
+			"editions_count", len(cfg.MaxMind.Editions),
+			"update_interval", cfg.UpdateInterval,
+		)
+		if len(cfg.MaxMind.Editions) > 0 {
+			slog.Debug("Configured editions", "editions", cfg.MaxMind.Editions)
+		}
+	case config.ModeDirectory:
+		slog.Info("Directory mode configuration",
+			"watched_paths_count", len(cfg.Directory.Paths),
+		)
+		if len(cfg.Directory.Paths) > 0 {
+			slog.Debug("Watched directories", "paths", cfg.Directory.Paths)
+		}
+	default:
+		slog.Warn("Unknown mode configuration", "mode", cfg.Mode)
+	}
+
+	if len(databases) > 0 {
+		dbNames := make([]string, len(databases))
+		for i, db := range databases {
+			dbNames[i] = db.Name
+		}
+		slog.Info("Loaded databases", "databases", dbNames)
+	} else {
+		slog.Warn("No databases loaded - server may not function correctly")
 	}
 }

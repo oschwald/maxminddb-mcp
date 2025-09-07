@@ -31,7 +31,7 @@ go build -o maxminddb-mcp cmd/maxminddb-mcp/main.go
 
 The server supports three configuration modes, checked in this order:
 
-1. Environment variable: `MAXMIND_MCP_CONFIG`
+1. Environment variable: `MAXMINDDB_MCP_CONFIG`
 2. User config: `~/.config/maxminddb-mcp/config.toml`
 3. System GeoIP.conf: `/etc/GeoIP.conf` (compatibility mode)
 4. User GeoIP.conf: `~/.config/maxminddb-mcp/GeoIP.conf`

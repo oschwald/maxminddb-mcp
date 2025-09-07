@@ -49,7 +49,6 @@ func testDirectMMDBOperations(t *testing.T, dbPath string) {
 	if err != nil {
 		t.Fatalf("Failed to open MMDB file: %v", err)
 	}
-	defer reader.Close()
 
 	// Test known IP lookups - some IPs may have empty records in test data
 	testIPs := []struct {
@@ -142,7 +141,6 @@ func testIteratorWithRealMMDB(t *testing.T, dbPath string) {
 	if err != nil {
 		t.Fatalf("Failed to open MMDB file: %v", err)
 	}
-	defer reader.Close()
 
 	// Create iterator manager
 	iterMgr := iterator.New(1*time.Minute, 10*time.Second)
@@ -224,7 +222,6 @@ func TestVariousMMDBFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to open %s: %v", filename, err)
 			}
-			defer reader.Close()
 
 			// Test basic metadata
 			t.Logf("Database: %s", filename)
@@ -283,7 +280,6 @@ func BenchmarkRealMMDBLookup(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to open MMDB file: %v", err)
 	}
-	defer reader.Close()
 
 	ip, _ := netip.ParseAddr("89.160.20.112")
 
@@ -306,7 +302,6 @@ func BenchmarkRealMMDBNetworkIteration(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to open MMDB file: %v", err)
 	}
-	defer reader.Close()
 
 	prefix, _ := netip.ParsePrefix("89.160.20.0/24")
 

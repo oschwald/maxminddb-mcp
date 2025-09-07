@@ -150,7 +150,6 @@ func TestIterateSimple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	// Use a small network that should have data in the test DB
 	network, err := netip.ParsePrefix("1.0.0.0/24")
@@ -210,7 +209,6 @@ func TestIterateSimpleWithFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	network, err := netip.ParsePrefix("1.0.0.0/24")
 	if err != nil {
@@ -221,7 +219,7 @@ func TestIterateSimpleWithFilters(t *testing.T) {
 	filters := []filter.Filter{
 		{
 			Field:    "autonomous_system_number",
-			Operator: "gt",
+			Operator: "greater_than",
 			Value:    float64(0),
 		},
 	}
@@ -390,7 +388,7 @@ func TestSimpleIteratorFields(t *testing.T) {
 	lastNetwork, _ := netip.ParsePrefix("1.1.0.0/16")
 
 	filters := []filter.Filter{
-		{Field: "test", Operator: "eq", Value: "value"},
+		{Field: "test", Operator: "equals", Value: "value"},
 	}
 
 	iterator := &SimpleIterator{
@@ -498,7 +496,6 @@ func TestSimpleIteratorWithNetworksWithin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	defer func() { _ = reader.Close() }()
 
 	// Use a network that should have data
 	network, err := netip.ParsePrefix("1.1.1.0/24")

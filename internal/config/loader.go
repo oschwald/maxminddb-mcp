@@ -14,8 +14,8 @@ import (
 func Paths() []string {
 	paths := []string{}
 
-	// 1. Environment variable
-	if configPath := os.Getenv("MAXMIND_MCP_CONFIG"); configPath != "" {
+	// 1. Environment variable (standardized for this project name)
+	if configPath := os.Getenv("MAXMINDDB_MCP_CONFIG"); configPath != "" {
 		paths = append(paths, configPath)
 	}
 

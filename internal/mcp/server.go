@@ -175,9 +175,8 @@ func (s *Server) handleLookupNetwork(
 		return mcp.NewToolResultError("Database not found: " + dbName), nil
 	}
 
-	// Parse filters - for now, skip complex array parsing
-	var filters []filter.Filter
-	// TODO: Implement proper filter parsing once we understand the MCP parameter format
+	// Parse filters from request
+	filters := parseFiltersFromRequest(request)
 
 	// Validate filters
 	if err := filter.Validate(filters); err != nil {
@@ -226,7 +225,7 @@ func (s *Server) handleLookupNetwork(
 		return mcp.NewToolResultError(fmt.Sprintf("Iteration failed: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Network lookup results: %+v", result)), nil
+	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
 // handleListDatabases handles the list_databases tool.
@@ -235,7 +234,9 @@ func (s *Server) handleListDatabases(
 	_ mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	databases := s.dbManager.ListDatabases()
-	return mcp.NewToolResultText(fmt.Sprintf("Available databases: %+v", databases)), nil
+	return mcp.NewToolResultStructuredOnly(map[string]any{
+		"databases": databases,
+	}), nil
 }
 
 // handleUpdateDatabases handles the update_databases tool.
@@ -252,7 +253,9 @@ func (s *Server) handleUpdateDatabases(
 		return mcp.NewToolResultError(fmt.Sprintf("Update failed: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Update results: %+v", results)), nil
+	return mcp.NewToolResultStructuredOnly(map[string]any{
+		"results": results,
+	}), nil
 }
 
 // lookupIPInSingleDatabase performs IP lookup in a specific database.
@@ -275,7 +278,7 @@ func (s *Server) lookupIPInSingleDatabase(
 		"data": record,
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("IP lookup result: %+v", result)), nil
+	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
 // lookupIPInAllDatabases performs IP lookup across all databases.
@@ -306,5 +309,41 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 		"databases": results,
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("IP lookup results: %+v", result)), nil
+	return mcp.NewToolResultStructuredOnly(result), nil
+}
+
+// parseFiltersFromRequest extracts filters from MCP request arguments.
+func parseFiltersFromRequest(request mcp.CallToolRequest) []filter.Filter {
+	var filters []filter.Filter
+	args := request.GetArguments()
+	filtersParam, exists := args["filters"]
+	if !exists {
+		return filters
+	}
+
+	filtersArray, ok := filtersParam.([]any)
+	if !ok {
+		return filters
+	}
+
+	for _, filterItem := range filtersArray {
+		filterMap, ok := filterItem.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		field, _ := filterMap["field"].(string)
+		operator, _ := filterMap["operator"].(string)
+		value := filterMap["value"]
+
+		if field != "" && operator != "" {
+			filters = append(filters, filter.Filter{
+				Field:    field,
+				Operator: operator,
+				Value:    value,
+			})
+		}
+	}
+
+	return filters
 }
