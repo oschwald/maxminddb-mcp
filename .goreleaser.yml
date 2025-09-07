@@ -1,3 +1,5 @@
+version: 2
+
 project_name: maxminddb-mcp
 
 before:
@@ -42,10 +44,12 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
+      - zip
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
 
 checksum:
@@ -53,7 +57,7 @@ checksum:
   algorithm: sha256
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
@@ -78,9 +82,10 @@ changelog:
       order: 999
 
 dockers:
-  - image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-amd64"
+  - id: maxminddb-mcp
+    image_templates:
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-{{ .Arch }}"
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-{{ .Arch }}"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
@@ -90,23 +95,8 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
-      - "--platform=linux/amd64"
-    goarch: amd64
-    
-  - image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-arm64"
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-arm64"
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
-      - "--platform=linux/arm64"
-    goarch: arm64
+      - "--platform=linux/{{ .Arch }}"
+    goos: linux
 
 docker_manifests:
   - name_template: "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}"
