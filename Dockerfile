@@ -1,4 +1,4 @@
-FROM alpine:3.19
+FROM alpine:3.22
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates tzdata
