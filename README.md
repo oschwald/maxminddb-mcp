@@ -2,7 +2,7 @@
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMind MMDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
+A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMindDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
 
 > **Important Notice**: This is an **unofficial project** and is **not endorsed by MaxMind Inc.** This MCP server is an independent implementation. For official MaxMind products and support, please visit [maxmind.com](https://www.maxmind.com/).
 

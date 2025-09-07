@@ -1,6 +1,6 @@
 # Claude Code Development Guide
 
-This document provides guidelines for developing the MaxMind MMDB MCP Server using Claude Code.
+This document provides guidelines for developing the MaxMindDB MCP Server using Claude Code.
 
 ## Quick Start Commands
 

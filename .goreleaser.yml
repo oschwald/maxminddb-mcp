@@ -114,10 +114,10 @@ nfpms:
   - id: packages
     package_name: maxminddb-mcp
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    vendor: MaxMind MMDB MCP Server
+    vendor: MaxMindDB MCP Server
     homepage: https://github.com/oschwald/maxminddb-mcp
     maintainer: Greg Oschwald <oschwald@maxmind.com>
-    description: A powerful Model Context Protocol (MCP) server for MaxMind MMDB databases
+    description: A powerful Model Context Protocol (MCP) server for MaxMindDB databases
     license: ISC
     formats:
       - deb
@@ -140,7 +140,7 @@ release:
   prerelease: auto
   mode: replace
   header: |
-    ## MaxMind MMDB MCP Server {{ .Version }}
+    ## MaxMindDB MCP Server {{ .Version }}
     
     This release includes binaries for multiple platforms and architectures.
     

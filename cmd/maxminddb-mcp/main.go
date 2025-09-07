@@ -1,4 +1,4 @@
-// MaxMind MMDB MCP Server provides Model Context Protocol access to MaxMind databases.
+// MaxMindDB MCP Server provides Model Context Protocol access to MaxMind databases.
 package main
 
 import (
@@ -119,10 +119,10 @@ func main() {
 
 // printHelp displays usage information.
 func printHelp() {
-	fmt.Printf(`MaxMind MMDB MCP Server %s
+	fmt.Printf(`MaxMindDB MCP Server %s
 
 A powerful Model Context Protocol (MCP) server that provides comprehensive 
-geolocation and network intelligence through MaxMind MMDB databases.
+geolocation and network intelligence through MaxMindDB databases.
 
 Usage:
   maxminddb-mcp [flags]
@@ -207,7 +207,7 @@ func initializeDatabases(cfg *config.Config, dbManager *database.Manager) error 
 func logStartupSummary(cfg *config.Config, dbManager *database.Manager, autoUpdateEnabled bool) {
 	databases := dbManager.ListDatabases()
 
-	slog.Info("MaxMind MMDB MCP Server starting",
+	slog.Info("MaxMindDB MCP Server starting",
 		"mode", cfg.Mode,
 		"databases_loaded", len(databases),
 		"auto_update_enabled", autoUpdateEnabled,

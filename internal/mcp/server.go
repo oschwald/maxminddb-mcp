@@ -35,7 +35,7 @@ func New(
 	iterMgr *iterator.Manager,
 ) *Server {
 	mcpServer := server.NewMCPServer(
-		"MaxMind MMDB Server",
+		"MaxMindDB Server",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 	)

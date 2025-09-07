@@ -11,7 +11,7 @@ import (
 )
 
 func BenchmarkFilterEngine(b *testing.B) {
-	// Test data representing typical MaxMind MMDB record
+	// Test data representing typical MaxMindDB record
 	testData := map[string]any{
 		"country": map[string]any{
 			"iso_code": "US",

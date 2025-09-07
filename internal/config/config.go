@@ -1,4 +1,4 @@
-// Package config provides configuration management for the MaxMind MMDB MCP server.
+// Package config provides configuration management for the MaxMindDB MCP server.
 package config
 
 import (
