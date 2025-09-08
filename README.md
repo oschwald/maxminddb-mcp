@@ -314,7 +314,7 @@ const client = new Client(
     name: "maxminddb-client",
     version: "1.0.0",
   },
-  { capabilities: {} },
+  { capabilities: {} }
 );
 
 await client.connect(transport);
