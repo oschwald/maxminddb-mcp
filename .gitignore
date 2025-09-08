@@ -59,3 +59,7 @@ GeoIP.conf
 # Temporary files
 *.tmp
 *.temp
+
+# Build/dist dirs
+/bin
+/dist
