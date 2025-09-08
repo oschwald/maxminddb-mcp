@@ -82,10 +82,11 @@ changelog:
       order: 999
 
 dockers:
-  - id: maxminddb-mcp
+  - id: amd64
+    ids: [maxminddb-mcp]
     image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-{{ .Runtime.Goarch }}"
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-{{ .Runtime.Goarch }}"
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-amd64"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
@@ -95,8 +96,27 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
-      - "--platform=linux/{{ .Runtime.Goarch }}"
+      - "--platform=linux/amd64"
     goos: linux
+    goarch: amd64
+
+  - id: arm64
+    ids: [maxminddb-mcp]
+    image_templates:
+      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-arm64"
+      - "ghcr.io/oschwald/maxminddb-mcp:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
+      - "--platform=linux/arm64"
+    goos: linux
+    goarch: arm64
 
 docker_manifests:
   - name_template: "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}"
