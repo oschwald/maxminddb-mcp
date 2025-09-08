@@ -277,3 +277,4 @@ echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | ./bin/maxmin
 - [ ] `go vet ./...` passes
 - [ ] Documentation updated
 - [ ] Tests added for new functionality
+- [ ] No emojis added unless explicitly requested by user
