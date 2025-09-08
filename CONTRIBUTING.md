@@ -168,13 +168,11 @@ func TestFeatureName(t *testing.T) {
    ```
 
 2. **Make Changes**
-
    - Follow existing code patterns and conventions
    - Add tests for new functionality
    - Update documentation as needed
 
 3. **Pre-commit Checklist**
-
    - [ ] `golangci-lint run` passes
    - [ ] `go test ./...` passes
    - [ ] `go vet ./...` passes
@@ -223,18 +221,15 @@ func TestFeatureName(t *testing.T) {
 ### PR Guidelines
 
 1. **Clear Description**
-
    - Explain what changes you made and why
    - Link to any relevant issues
    - Include screenshots for UI changes (if applicable)
 
 2. **Small, Focused Changes**
-
    - Keep PRs focused on a single feature or fix
    - Break large changes into multiple PRs when possible
 
 3. **Test Coverage**
-
    - Include tests for new functionality
    - Ensure existing tests still pass
    - Aim for good test coverage on changed code
