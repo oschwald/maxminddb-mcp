@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -531,13 +532,7 @@ func TestSupportedOperators(t *testing.T) {
 	}
 
 	for _, expected := range expectedOperators {
-		found := false
-		for _, op := range operators {
-			if op == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(operators, expected)
 		if !found {
 			t.Errorf("Expected operator '%s' not found", expected)
 		}

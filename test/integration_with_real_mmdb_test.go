@@ -283,8 +283,7 @@ func BenchmarkRealMMDBLookup(b *testing.B) {
 
 	ip, _ := netip.ParseAddr("89.160.20.112")
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		var record map[string]any
 		_ = reader.Lookup(ip).Decode(&record)
 	}
@@ -305,8 +304,7 @@ func BenchmarkRealMMDBNetworkIteration(b *testing.B) {
 
 	prefix, _ := netip.ParsePrefix("89.160.20.0/24")
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		count := 0
 		for result := range reader.NetworksWithin(prefix) {
 			count++

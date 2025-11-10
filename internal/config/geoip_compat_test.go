@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -295,13 +296,7 @@ func TestDefaultGeoIPPaths(t *testing.T) {
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		expectedUserPath := filepath.Join(homeDir, ".config", "maxminddb-mcp", "GeoIP.conf")
-		found := false
-		for _, path := range paths {
-			if path == expectedUserPath {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(paths, expectedUserPath)
 		if !found {
 			t.Errorf("Expected user GeoIP.conf path %s in defaults", expectedUserPath)
 		}

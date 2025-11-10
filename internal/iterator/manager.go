@@ -417,12 +417,10 @@ func generateID() (string, error) {
 // normalizeFilterMode normalizes filter mode to "and" or "or", defaulting to "and".
 func normalizeFilterMode(mode string) string {
 	switch strings.ToLower(mode) {
-	case string(filter.ModeAnd):
-		return string(filter.ModeAnd)
 	case string(filter.ModeOr):
 		return string(filter.ModeOr)
 	default:
-		return string(filter.ModeAnd) // Default to "and" for unknown values
+		return string(filter.ModeAnd) // Default to "and" for unknown or "and" values
 	}
 }
 

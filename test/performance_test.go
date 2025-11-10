@@ -92,8 +92,8 @@ func BenchmarkIteratorCreation(b *testing.B) {
 	defer iterMgr.StopCleanup()
 
 	// Simulate creating many iterators
-	b.ResetTimer()
-	for range b.N {
+
+	for b.Loop() {
 		network, _ := netip.ParsePrefix("192.168.0.0/24")
 		filters := []filter.Filter{
 			{Field: "country.iso_code", Operator: "equals", Value: "US"},
@@ -118,8 +118,7 @@ func BenchmarkConfigValidation(b *testing.B) {
 		},
 	}
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_ = cfg.Validate()
 	}
 }
@@ -137,8 +136,7 @@ func BenchmarkFilterValidation(b *testing.B) {
 		{Field: "country.names.en", Operator: "exists", Value: true},
 	}
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_ = filter.Validate(filters)
 	}
 }
@@ -154,8 +152,7 @@ func BenchmarkNetworkParsing(b *testing.B) {
 		"0.0.0.0/0",
 	}
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		for _, network := range networks {
 			_, _ = netip.ParsePrefix(network)
 		}
@@ -184,8 +181,7 @@ func BenchmarkNestedFieldAccess(b *testing.B) {
 		"level1.nonexistent.level3",
 	}
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		for _, field := range fields {
 			// Simulate the nested field access logic
 			getNestedFieldBench(testData, field)
@@ -219,8 +215,7 @@ func BenchmarkFilterCreation(b *testing.B) {
 		},
 	}
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		filter.New(filters, "and")
 	}
 }
