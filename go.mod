@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/mark3labs/mcp-go v0.43.0
+	github.com/mark3labs/mcp-go v0.43.1
 	github.com/maxmind/geoipupdate/v7 v7.1.1
 	github.com/oschwald/maxminddb-golang/v2 v2.1.0
 	github.com/pelletier/go-toml/v2 v2.2.4
