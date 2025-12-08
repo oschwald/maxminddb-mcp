@@ -6,7 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mark3labs/mcp-go v0.43.0
 	github.com/maxmind/geoipupdate/v7 v7.1.1
-	github.com/oschwald/maxminddb-golang/v2 v2.1.0
+	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/pelletier/go-toml/v2 v2.2.4
 )
 
@@ -21,6 +21,6 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
