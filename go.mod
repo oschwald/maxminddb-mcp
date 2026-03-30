@@ -7,7 +7,7 @@ require (
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/maxmind/geoipupdate/v7 v7.1.1
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
-	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/pelletier/go-toml/v2 v2.3.0
 )
 
 require (
