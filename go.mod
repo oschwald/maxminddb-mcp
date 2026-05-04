@@ -3,7 +3,7 @@ module github.com/oschwald/maxminddb-mcp
 go 1.24.0
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.0
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/maxmind/geoipupdate/v7 v7.1.1
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
