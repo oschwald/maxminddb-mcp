@@ -63,8 +63,9 @@ func New(
 	version string,
 ) *Server {
 	mcpServer := server.NewMCPServer(
-		"MaxMindDB Server",
+		"maxminddb",
 		version,
+		server.WithTitle("MaxMindDB"),
 		server.WithInstructions(serverInstructions),
 		server.WithMethodCacheHints(
 			mcp.MethodServerDiscover,

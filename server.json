@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.oschwald/maxminddb-mcp",
+  "name": "io.github.oschwald/maxminddb",
   "title": "MaxMindDB",
   "description": "Query IP locations and network ownership in GeoIP2, GeoLite2, and custom MMDB databases.",
   "repository": {

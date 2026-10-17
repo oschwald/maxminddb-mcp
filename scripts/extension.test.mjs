@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdtemp,
   mkdir,
   readFile,
   rm,
   copyFile,
+  chmod,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,9 +21,13 @@ import {
 } from "@anthropic-ai/mcpb";
 import { unzipSync } from "fflate";
 import { packageExtension } from "./package-extension.mjs";
+import {
+  extensionTargets,
+  packageUniversalExtension,
+} from "./package-universal-extension.mjs";
 
 test(
-  "installed Claude and OpenAI packages launch and retain external databases",
+  "installed extension packages launch and retain external databases",
   { timeout: 60000 },
   async t => {
     const temp = await mkdtemp(join(tmpdir(), "maxminddb extension "));
@@ -172,6 +178,120 @@ test(
       env: { MAXMINDDB_MCP_CONFIG: "nonexistent.toml", ...settings.env },
     });
 
+    const geminiBundle = join(
+      dist,
+      `${process.platform}.${process.arch}.maxminddb-mcp-gemini.zip`
+    );
+    const geminiInstalled = join(temp, "installed Gemini extension");
+    assert.equal(
+      await unpackExtension({
+        mcpbPath: geminiBundle,
+        outputDir: geminiInstalled,
+        silent: true,
+      }),
+      true
+    );
+    const gemini = JSON.parse(
+      await readFile(join(geminiInstalled, "gemini-extension.json"), "utf8")
+    );
+    assert.equal(gemini.version, manifest.version);
+    assert.equal(
+      gemini.settings.find(
+        setting => setting.envVar === "MAXMINDDB_MCP_LICENSE_KEY"
+      ).sensitive,
+      true
+    );
+    const geminiServer = gemini.mcpServers.maxminddb;
+    assert.equal(geminiServer.env.MAXMINDDB_MCP_CONFIG, "");
+    await checkServer({
+      ...geminiServer,
+      command: geminiServer.command.replace(
+        "${extensionPath}",
+        () => geminiInstalled
+      ),
+      env: { ...geminiServer.env, ...settings.env },
+    });
+
+    // Other targets are placeholders here. Release CI supplies each native build.
+    for (const target of extensionTargets) {
+      if (target === `${goos}_${goarch}`) continue;
+      const stage = join(dist, "extensions", target);
+      await mkdir(join(stage, "server"), { recursive: true });
+      await writeFile(
+        join(stage, "manifest.json"),
+        JSON.stringify({ version: manifest.version })
+      );
+      await writeFile(
+        join(
+          stage,
+          "server",
+          `maxminddb-mcp${target.startsWith("windows_") ? ".exe" : ""}`
+        ),
+        "placeholder"
+      );
+    }
+    const universalBundle = join(dist, "maxminddb.mcpb");
+    await writeFile(
+      join(dist, "checksums.txt"),
+      "existing-checksum  other.zip\nstale-checksum  maxminddb.mcpb\n"
+    );
+    execFileSync(
+      process.execPath,
+      ["scripts/package-universal-extension.mjs", manifest.version, dist],
+      { stdio: "pipe" }
+    );
+    const checksum = createHash("sha256")
+      .update(await readFile(universalBundle))
+      .digest("hex");
+    assert.equal(
+      await readFile(join(dist, "checksums.txt"), "utf8"),
+      `existing-checksum  other.zip\n${checksum}  maxminddb.mcpb\n`
+    );
+    const universalInstalled = join(temp, "installed universal extension");
+    assert.equal(
+      await unpackExtension({
+        mcpbPath: universalBundle,
+        outputDir: universalInstalled,
+        silent: true,
+      }),
+      true
+    );
+    const universal = JSON.parse(
+      await readFile(join(universalInstalled, "manifest.json"), "utf8")
+    );
+    assert.deepEqual(universal.user_config, manifest.user_config);
+    assert.deepEqual(universal.compatibility.platforms, [
+      "darwin",
+      "linux",
+      "win32",
+    ]);
+    const universalSettings = await getMcpConfigForManifest({
+      manifest: universal,
+      extensionPath: universalInstalled,
+      systemDirs: { HOME: temp },
+      userConfig: { download_enabled: false, database_dir: databases },
+      pathSeparator: sep,
+    });
+    await checkServer(universalSettings);
+    assert.equal(
+      universal.server.mcp_config.platform_overrides.win32.command,
+      "${__dirname}/server/windows_amd64/maxminddb-mcp.exe"
+    );
+    assert.deepEqual(
+      universal.server.mcp_config.platform_overrides.win32.args,
+      []
+    );
+    await assert.rejects(
+      packageUniversalExtension("9.9.9", dist),
+      /Expected .* version 9.9.9/
+    );
+    await rm(join(dist, "extensions", "darwin_arm64"), {
+      recursive: true,
+    });
+    await assert.rejects(packageUniversalExtension(manifest.version, dist), {
+      code: "ENOENT",
+    });
+
     const openaiBundle = join(
       dist,
       `maxminddb-mcp_0.0.0-test_${goos}_${goarch}_openai-plugin.zip`
@@ -287,6 +407,78 @@ test(
         assert.match(error.stderr.toString(), /account ID/);
         assert.doesNotMatch(error.stderr.toString(), /do-not-log-this-key/);
         assert.equal(error.stdout.length, 0);
+        return true;
+      }
+    );
+  }
+);
+
+test(
+  "universal launcher selects the CPU and preserves arguments",
+  {
+    skip: process.platform === "win32",
+  },
+  async t => {
+    const temp = await mkdtemp(join(tmpdir(), "maxminddb launcher "));
+    t.after(() => rm(temp, { recursive: true, force: true }));
+    await mkdir(join(temp, "bin"));
+    const uname = join(temp, "bin", "uname");
+    await writeFile(
+      uname,
+      '#!/bin/sh\ncase "$1" in -s) printf "%s\\n" "$TEST_SYSTEM" ;; -m) printf "%s\\n" "$TEST_ARCH" ;; esac\n'
+    );
+    await chmod(uname, 0o755);
+    const launcher = join(temp, "launch.sh");
+    await copyFile("packaging/launch-universal.sh", launcher);
+    for (const [system, arch, target] of [
+      ["Darwin", "x86_64", "darwin_amd64"],
+      ["Darwin", "arm64", "darwin_arm64"],
+      ["Linux", "x86_64", "linux_amd64"],
+      ["Linux", "aarch64", "linux_arm64"],
+      ["Linux", "arm64", "linux_arm64"],
+    ]) {
+      await mkdir(join(temp, target), { recursive: true });
+      const executable = join(temp, target, "maxminddb-mcp");
+      await writeFile(
+        executable,
+        `#!/bin/sh\nprintf '%s\\n' '${target}' "$@"\n`
+      );
+      await chmod(executable, 0o755);
+      assert.equal(
+        execFileSync(
+          "/bin/sh",
+          [launcher, "argument with spaces", "$literal"],
+          {
+            env: {
+              ...process.env,
+              PATH: join(temp, "bin"),
+              TEST_SYSTEM: system,
+              TEST_ARCH: arch,
+            },
+            encoding: "utf8",
+          }
+        ),
+        `${target}\nargument with spaces\n$literal\n`
+      );
+    }
+    assert.throws(
+      () =>
+        execFileSync("/bin/sh", [launcher], {
+          env: {
+            ...process.env,
+            PATH: join(temp, "bin"),
+            TEST_SYSTEM: "Linux",
+            TEST_ARCH: "riscv64",
+          },
+          stdio: "pipe",
+        }),
+      error => {
+        assert.equal(error.status, 1);
+        assert.equal(error.stdout.length, 0);
+        assert.match(
+          error.stderr.toString(),
+          /Unsupported platform: Linux\/riscv64/
+        );
         return true;
       }
     );

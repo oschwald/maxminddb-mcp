@@ -38,7 +38,6 @@ export async function packageExtension(binary, version, goos, goarch, dist) {
     await readFile(join(root, "packaging/manifest.json"), "utf8")
   );
   manifest.version = version;
-  manifest.display_name = `MaxMindDB (${goos}/${goarch})`;
   manifest.compatibility = { platforms: [goos === "windows" ? "win32" : goos] };
   manifest.server.entry_point = executable;
   manifest.server.mcp_config.command = `\${__dirname}/${executable}`;
@@ -50,6 +49,7 @@ export async function packageExtension(binary, version, goos, goarch, dist) {
   // Both formats carry the same executable and settings, with no launcher runtime.
   const plugin = {
     name: manifest.name,
+    displayName: manifest.display_name,
     version,
     description: manifest.description,
     author: manifest.author,
@@ -164,6 +164,43 @@ export async function packageExtension(binary, version, goos, goarch, dist) {
   await writeFile(
     join(dist, `maxminddb-mcp_${version}_${target}_openai-plugin.zip`),
     zipSync(zipFiles, { level: 9 })
+  );
+
+  const gemini = JSON.parse(
+    await readFile(join(root, "gemini-extension.json"), "utf8")
+  );
+  gemini.version = version;
+  gemini.mcpServers.maxminddb = {
+    command: `\${extensionPath}/${executable}`,
+    env: {
+      ...gemini.mcpServers.maxminddb.env,
+      MAXMINDDB_MCP_CONFIG: "",
+      MAXMINDDB_MCP_DOWNLOAD_ENABLED: "true",
+      MAXMINDDB_MCP_DATABASE_DIR: "",
+    },
+  };
+  const platform = goos === "windows" ? "win32" : goos;
+  const arch = goarch === "amd64" ? "x64" : goarch;
+  await writeFile(
+    join(dist, `${platform}.${arch}.maxminddb-mcp-gemini.zip`),
+    zipSync(
+      {
+        "gemini-extension.json": [
+          Buffer.from(JSON.stringify(gemini, null, 2) + "\n"),
+          { os: 3, attrs: 0o644 << 16 },
+        ],
+        ...Object.fromEntries(
+          [
+            executable,
+            "LICENSE",
+            "README.md",
+            "icon.png",
+            "skills/setup/SKILL.md",
+          ].map(path => [path, zipFiles[path]])
+        ),
+      },
+      { level: 9 }
+    )
   );
   return bundle;
 }

@@ -76,6 +76,7 @@ checksum:
     - glob: dist/*.mcpb
     - glob: dist/*_claude-plugin.zip
     - glob: dist/*_openai-plugin.zip
+    - glob: dist/*.maxminddb-mcp-gemini.zip
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -119,7 +120,7 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/oschwald/maxminddb-mcp
-      io.modelcontextprotocol.server.name: io.github.oschwald/maxminddb-mcp
+      io.modelcontextprotocol.server.name: io.github.oschwald/maxminddb
 
   - <<: *container
     id: amd64
@@ -180,6 +181,7 @@ release:
     - glob: dist/*.mcpb
     - glob: dist/*_claude-plugin.zip
     - glob: dist/*_openai-plugin.zip
+    - glob: dist/*.maxminddb-mcp-gemini.zip
   header: |
     ## MaxMindDB MCP Server {{ .Version }}
     
@@ -201,7 +203,8 @@ release:
   footer: |
     ### Installation
 
-    **Claude Desktop:** Download the `.mcpb` file for your OS and architecture.
+    **Claude Desktop:** Download `maxminddb.mcpb`.
+    It includes all supported platforms. Smaller platform-specific MCPBs are also available.
     Open Settings > Extensions > Advanced settings > Install Extension and select the file.
     Enter your MaxMind account settings, or turn off downloads and choose a folder of MMDB files.
     No terminal, Go installation, or config file is required.
@@ -214,6 +217,9 @@ release:
     for your OS and architecture. It includes the server and a setup skill.
     Follow the [local plugin guide](https://github.com/oschwald/maxminddb-mcp#chatgpt-desktop-plugin-experimental).
     Existing server configuration is required. This is not a public directory listing.
+
+    **Gemini CLI:** Run `gemini extensions install https://github.com/oschwald/maxminddb-mcp`.
+    Gemini selects a native extension ZIP and prompts for MaxMind credentials.
     
     **Go Install:**
     ```bash

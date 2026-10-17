@@ -5,14 +5,13 @@ description: Check the MaxMindDB plugin connection and database configuration af
 
 # Set up MaxMindDB
 
-Use the MaxMindDB MCP tools for these checks. The plugin runs a bundled executable
-on the user's computer.
+Use the MaxMindDB MCP tools for these checks. The server runs locally as a bundled
+executable or a Docker container, depending on the package.
 
 1. Call `list_databases`. If the tools are unavailable, check that the plugin is
    enabled in a local thread and that its OS and architecture match the computer.
-   Use the client-specific setup instructions below. The executable discovers
-   `~/.config/maxminddb-mcp/config.toml`,
-   `~/.config/maxminddb-mcp/GeoIP.conf`, then `/etc/GeoIP.conf`.
+   Use the client-specific setup instructions below. Docker-backed plugins need
+   a running Docker engine.
    After correcting configuration, restart the server and use a new conversation.
 2. Read `status`, `message`, and `update` from the result. If downloading, explain
    that tools are connected but databases are not ready. Check again when the
@@ -35,12 +34,19 @@ database through a tool.
 
 ## Client configuration
 
-- **Claude:** Direct the user to the plugin's settings to select MaxMind downloads
-  or an existing database folder. For downloads, enter the account ID and license
-  key in those settings, outside chat. If the client does not show plugin settings,
-  use the standalone configuration instructions in the bundled
-  [README](../../README.md). MCPB extension settings are a separate installation.
+- **Claude:** Direct the user to the plugin's settings for the account ID, license
+  key, and editions. Native release plugins also offer an existing database
+  folder. The repository plugin uses Docker and supports downloads only.
+  MCPB extension settings are a separate installation.
 - **ChatGPT:** The OpenAI plugin uses existing configuration and does not show
-  Claude's settings form. See the ChatGPT desktop and configuration sections of
-  the bundled [README](../../README.md). A manually configured stdio server can
-  pass environment settings. The plugin does not provide an editor for them.
+  a settings form. The executable discovers
+  `~/.config/maxminddb-mcp/config.toml`,
+  `~/.config/maxminddb-mcp/GeoIP.conf`, then `/etc/GeoIP.conf`.
+  See the ChatGPT desktop and configuration sections of the
+  [README](https://github.com/oschwald/maxminddb-mcp#configuration).
+  A manually configured stdio server can pass environment settings.
+- **Gemini:** Direct the user to `gemini extensions config maxminddb` to set the
+  account ID and license key outside chat. Release extensions use a native
+  executable. Git installs use Docker. Both default to City and ASN downloads.
+- **Cursor:** Direct the user to Plugins → Configure for the account ID, license
+  key, and editions. This plugin uses Docker and supports downloads only.
