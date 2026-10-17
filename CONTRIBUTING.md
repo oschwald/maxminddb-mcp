@@ -39,7 +39,7 @@ go test ./...
 
 The query tool fixtures in `internal/mcp/testdata` cover custom record types and
 changes between database builds. Regenerate them with the pinned writer from
-the submodule, then commit the generator and both MMDB files:
+the submodule, then commit the generator and the MMDB files:
 
 ```bash
 cd testdata

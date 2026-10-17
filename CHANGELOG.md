@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Compare database answers within a bounded CIDR, with paginated changes, progress, cancellation, and tokens bound to loaded database generations.
+
 - Inspect full database metadata and bounded samples of field paths, types, and examples with `inspect_database`.
 
 - Select fields from IP, batch, and network lookup results. Support scalar and array records, root-value filters, and array indexes in field paths.

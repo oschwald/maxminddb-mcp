@@ -24,6 +24,7 @@ npm run format:check
 - Decode MMDB records into `any`. Use `record.Lookup` for map paths, array indexes, and `$`. Apply filters before selecting output fields.
 - Hold the per-edition file lock from the installed-file check through installation and reload. Keep lock files on disk.
 - Keep shared MMDB readers open while active iterators can reference them.
+- Comparison tokens bind to reader generations from `Snapshot`. Reloads and server restarts invalidate them. Compare JSON answers, not stored network boundaries.
 - Apply the iterator limit to both new queries and token resumes. Release new iterators if their first page fails.
 - Hold the iterator lock for a complete page. Cancellation must not lose a partial page.
 - Use bundled fixtures and local HTTP servers in tests. Do not depend on home-directory databases or live MaxMind downloads.

@@ -270,6 +270,24 @@ Numeric equality and ordering compare decoded MMDB integers and JSON numbers wit
 
 Accepts no arguments. Returns `databases`, sorted by filename. Each entry contains `name`, `type`, `description`, `last_updated`, and file `size` in bytes. Type, English description, and build time come from MMDB metadata. `last_updated` is the build time, not the file's modification time.
 
+### `compare_databases`
+
+Requires `old_database`, `new_database`, and `network`. Use an IPv4 /8 or smaller
+network, or a native IPv6 /32 or smaller network. Optional `max_results` ranges
+from 1 to 1000 and defaults to 100.
+
+Returns `changes` with inclusive `start_ip` and `end_ip`, `change` (`added`,
+`removed`, or `changed`), `before`, `after`, and corresponding `before_found` and
+`after_found` flags. Equal JSON answers remain unchanged when stored network
+boundaries or integer encodings differ. Ranges are clipped to the query.
+
+Each call compares at most 10,000 address segments. Continue with the same
+database names and network and the returned `resume_token` until `has_more` is
+false. A page can contain no changes and still have more addresses to compare.
+Page size can change. Reloading either database or restarting the server
+invalidates the token. Cancellation returns an error without advancing a token.
+Clients can request progress with `_meta.progressToken`.
+
 ### `inspect_database`
 
 Requires `database`. Optional `sample_size` ranges from 1 to 1000 and defaults
