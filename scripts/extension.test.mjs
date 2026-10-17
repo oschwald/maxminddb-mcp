@@ -21,10 +21,7 @@ import {
 } from "@anthropic-ai/mcpb";
 import { unzipSync } from "fflate";
 import { packageExtension } from "./package-extension.mjs";
-import {
-  extensionTargets,
-  packageUniversalExtension,
-} from "./package-universal-extension.mjs";
+import { packageUniversalExtension } from "./package-universal-extension.mjs";
 
 test(
   "installed extension packages launch and retain external databases",
@@ -202,18 +199,46 @@ test(
       true
     );
     const geminiServer = gemini.mcpServers.maxminddb;
-    assert.equal(geminiServer.env.MAXMINDDB_MCP_CONFIG, "");
+    assert.deepEqual(geminiServer.env, {
+      MAXMINDDB_MCP_CONFIG: "",
+      MAXMINDDB_MCP_DOWNLOAD_ENABLED: "true",
+      MAXMINDDB_MCP_DATABASE_DIR: "",
+      MAXMINDDB_MCP_ACCOUNT_ID: "${MAXMINDDB_MCP_ACCOUNT_ID}",
+      MAXMINDDB_MCP_LICENSE_KEY: "${MAXMINDDB_MCP_LICENSE_KEY}",
+      MAXMINDDB_MCP_EDITIONS: "GeoLite2-City,GeoLite2-ASN",
+    });
+    const geminiCredentials = {
+      MAXMINDDB_MCP_ACCOUNT_ID: "123",
+      MAXMINDDB_MCP_LICENSE_KEY: "test-license-key",
+    };
+    assert.deepEqual(
+      gemini.settings.map(setting => setting.envVar).sort(),
+      Object.keys(geminiCredentials).sort()
+    );
     await checkServer({
       ...geminiServer,
       command: geminiServer.command.replace(
         "${extensionPath}",
         () => geminiInstalled
       ),
-      env: { ...geminiServer.env, ...settings.env },
+      env: {
+        ...geminiServer.env,
+        ...geminiCredentials,
+        MAXMINDDB_MCP_DOWNLOAD_ENABLED: "false",
+        MAXMINDDB_MCP_DATABASE_DIR: databases,
+      },
     });
 
+    const expectedExecutables = [
+      "server/darwin_amd64/maxminddb-mcp",
+      "server/darwin_arm64/maxminddb-mcp",
+      "server/linux_amd64/maxminddb-mcp",
+      "server/linux_arm64/maxminddb-mcp",
+      "server/windows_amd64/maxminddb-mcp.exe",
+    ];
     // Other targets are placeholders here. Release CI supplies each native build.
-    for (const target of extensionTargets) {
+    for (const path of expectedExecutables) {
+      const [, target, executable] = path.split("/");
       if (target === `${goos}_${goarch}`) continue;
       const stage = join(dist, "extensions", target);
       await mkdir(join(stage, "server"), { recursive: true });
@@ -221,14 +246,7 @@ test(
         join(stage, "manifest.json"),
         JSON.stringify({ version: manifest.version })
       );
-      await writeFile(
-        join(
-          stage,
-          "server",
-          `maxminddb-mcp${target.startsWith("windows_") ? ".exe" : ""}`
-        ),
-        "placeholder"
-      );
+      await writeFile(join(stage, "server", executable), "placeholder");
     }
     const universalBundle = join(dist, "maxminddb.mcpb");
     await writeFile(
@@ -246,6 +264,12 @@ test(
     assert.equal(
       await readFile(join(dist, "checksums.txt"), "utf8"),
       `existing-checksum  other.zip\n${checksum}  maxminddb.mcpb\n`
+    );
+    assert.deepEqual(
+      Object.keys(unzipSync(await readFile(universalBundle)))
+        .filter(path => path.startsWith("server/"))
+        .sort(),
+      [...expectedExecutables, "server/launch.sh"].sort()
     );
     const universalInstalled = join(temp, "installed universal extension");
     assert.equal(

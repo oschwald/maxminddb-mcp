@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { packExtension } from "@anthropic-ai/mcpb";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-export const extensionTargets = [
+const extensionTargets = [
   "darwin_amd64",
   "darwin_arm64",
   "linux_amd64",
