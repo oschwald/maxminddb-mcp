@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Allow slow downloads and update lock waits to finish without a fixed total deadline. Caller cancellation and shutdown still interrupt network operations and lock waits.
+
 - Release newly created iterators when their first page fails or is canceled. Reclaim expired iterators before admitting new queries.
 
 - Return `no_databases` from IP lookups when no database is available, consistent with network lookups.
@@ -56,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set MCP `isError` for tool failures, including failed editions in a database update. IP lookups now include `found` and the matched prefix.
 - Load GeoIP.conf credentials referenced by TOML. Validate credentials and positive durations before starting timers, and fail when an explicit config file is missing.
 - Hash installed databases instead of trusting `.checksums`. Recover missing and modified files, validate downloaded MMDBs, and use unique temporary files.
-- Start initial downloads in the background with a five-minute deadline per download. Cancel work and close managers when stdio ends or the process receives a shutdown signal.
+- Start initial downloads in the background. Cancel work and close managers when stdio ends or the process receives a shutdown signal.
 - Replace home-dependent and live-network tests with bundled fixtures and local servers. Add race and stdio coverage for current and legacy protocol revisions.
 
 ### Removed

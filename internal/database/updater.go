@@ -149,8 +149,6 @@ func (u *Updater) updateDatabase(
 		Updated:  false,
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
 	if edition == "" || filepath.Base(edition) != edition || edition == "." || edition == ".." {
 		result.Error = "edition must be a database edition ID without a path"
 		return result

@@ -22,6 +22,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/maxmind/geoipupdate/v8/client"
 	"github.com/oschwald/maxminddb-mcp/internal/config"
 )
 
@@ -259,6 +260,50 @@ func TestDownloadCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("download ignored cancellation")
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestUpdateAllowsSlowDownload(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+	var downloads atomic.Int32
+	handler := downloadHandler(t, data, hex.EncodeToString(sum[:]), &downloads)
+	updater := testUpdater(t, http.NotFoundHandler())
+	mclient, err := client.New(1, "test", client.WithHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if strings.HasSuffix(request.URL.Path, "/download") {
+				select {
+				case <-time.After(6 * time.Minute):
+				case <-request.Context().Done():
+					return nil, request.Context().Err()
+				}
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			return response.Result(), nil
+		}),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updater.client = &mclient
+	synctest.Test(t, func(t *testing.T) {
+		result, err := updater.UpdateDatabase(t.Context(), "GeoLite2-ASN")
+		if err != nil || result.Error != "" || !result.Updated {
+			t.Fatalf("slow download failed: %+v, %v", result, err)
+		}
+		if len(updater.manager.ListDatabases()) != 1 {
+			t.Fatal("downloaded database was not loaded")
+		}
+	})
 }
 
 func TestUpdateAcrossProcesses(t *testing.T) {
