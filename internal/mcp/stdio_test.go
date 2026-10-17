@@ -158,6 +158,24 @@ func TestStdioProtocol(t *testing.T) {
 			if len(batch["results"].([]any)) != 2 {
 				t.Fatalf("invalid batch response: %v", batch)
 			}
+			for _, check := range []struct {
+				name      string
+				arguments map[string]any
+				field     string
+				want      any
+			}{
+				{"inspect_database", map[string]any{"database": "GeoLite2-ASN-Test.mmdb", "sample_size": 1}, "schema_complete", false},
+				{"compare_databases", map[string]any{"old_database": "GeoLite2-ASN-Test.mmdb", "new_database": "GeoLite2-ASN-Test.mmdb", "network": "1.0.0.0/24"}, "has_more", false},
+				{"summarize_network", map[string]any{"database": "GeoLite2-ASN-Test.mmdb", "network": "1.0.0.0/24", "group_by": "autonomous_system_number"}, "total_addresses", "256"},
+				{"verify_database", map[string]any{"database": "GeoLite2-ASN-Test.mmdb"}, "valid", true},
+				{"lookup_range", map[string]any{"start_ip": "1.0.0.1", "end_ip": "1.0.0.2"}, "total_matched", float64(1)},
+			} {
+				payload := wireContent(t, toolCall(check.name, check.arguments))
+				if payload[check.field] != check.want {
+					t.Fatalf("%s: %v", check.name, payload)
+				}
+			}
+
 			invalid := toolCall(
 				"lookup_network",
 				map[string]any{"network": "1.0.0.0/8", "max_results": -1},

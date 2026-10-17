@@ -39,6 +39,7 @@ Use lookup_ip for an address or lookup_ips for up to 100 addresses. Use fields t
 Use lookup_network for stored records overlapping a CIDR, or lookup_range for inclusive start_ip and end_ip.
 Use inspect_database for metadata and sampled field paths. The sample is not a complete schema.
 Use compare_databases for changed answers in a bounded CIDR and summarize_network for grouped counts.
+Continue comparisons with the same database names and network plus the latest resume_token.
 Use verify_database for integrity checks. Verification cannot stop once it starts.
 For network queries, specify database when more than one is loaded. Field names depend on the database.
 Example ASN filter: {"field":"autonomous_system_number","operator":"equals","value":13335}.

@@ -147,17 +147,30 @@ func TestSummaryLimitsAndCancellation(t *testing.T) {
 }
 
 func BenchmarkSummary(b *testing.B) {
-	reader, err := maxminddb.Open("testdata/old.mmdb")
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer reader.Close()
-	prefix := netip.MustParsePrefix("10.0.0.0/16")
-	engine := filter.New(nil, filter.ModeAnd)
-	b.ReportAllocs()
-	for b.Loop() {
-		if _, err := summarize(b.Context(), reader, prefix, "country", engine, nil); err != nil {
-			b.Fatal(err)
-		}
+	for _, test := range []struct{ file, network, field string }{
+		{"old", "10.0.0.0/16", "country"}, {"dense", "2001:db8:ffff::/115", "$"},
+	} {
+		b.Run(test.file, func(b *testing.B) {
+			reader, err := maxminddb.Open("testdata/" + test.file + ".mmdb")
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer reader.Close()
+			prefix := netip.MustParsePrefix(test.network)
+			engine := filter.New(nil, filter.ModeAnd)
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := summarize(
+					b.Context(),
+					reader,
+					prefix,
+					test.field,
+					engine,
+					nil,
+				); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

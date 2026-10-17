@@ -107,29 +107,36 @@ func TestComparisonResumeAndCancellation(t *testing.T) {
 }
 
 func BenchmarkComparison(b *testing.B) {
-	oldReader, err := maxminddb.Open("testdata/old.mmdb")
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer oldReader.Close()
-	newReader, err := maxminddb.Open("testdata/new.mmdb")
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer newReader.Close()
-	query := iprange.FromPrefix(netip.MustParsePrefix("10.0.0.0/16"))
-	b.ReportAllocs()
-	for b.Loop() {
-		if _, _, err := comparePage(
-			b.Context(),
-			oldReader,
-			newReader,
-			query,
-			100,
-			nil,
-		); err != nil {
-			b.Fatal(err)
-		}
+	for _, test := range []struct{ name, oldFile, newFile, network string }{
+		{"small", "old", "new", "10.0.0.0/16"},
+		{"scan_limit", "dense", "dense", "2001:db8:ffff::/112"},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			oldReader, err := maxminddb.Open("testdata/" + test.oldFile + ".mmdb")
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer oldReader.Close()
+			newReader, err := maxminddb.Open("testdata/" + test.newFile + ".mmdb")
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer newReader.Close()
+			query := iprange.FromPrefix(netip.MustParsePrefix(test.network))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, _, err := comparePage(
+					b.Context(),
+					oldReader,
+					newReader,
+					query,
+					100,
+					nil,
+				); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
