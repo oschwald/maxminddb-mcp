@@ -255,6 +255,8 @@ Application errors include an `error` object with `code` and `message`. Common c
 
 ## Protocol and development
 
+For `2026-07-28` clients, `server/discover` and `tools/list` advertise a five-minute private cache lifetime. Tool-call results, including `list_databases`, do not receive these cache hints.
+
 Initialization and discovery include instructions for choosing databases, filtering, pagination, and error recovery. Tools also provide readable display titles. Their names and arguments are unchanged.
 
 Clients can request progress for `lookup_network` and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.

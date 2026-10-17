@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -54,6 +55,16 @@ func New(
 		"MaxMindDB Server",
 		version,
 		server.WithInstructions(serverInstructions),
+		server.WithMethodCacheHints(
+			mcp.MethodServerDiscover,
+			(5*time.Minute).Milliseconds(),
+			mcp.CacheScopePrivate,
+		),
+		server.WithMethodCacheHints(
+			mcp.MethodToolsList,
+			(5*time.Minute).Milliseconds(),
+			mcp.CacheScopePrivate,
+		),
 		server.WithToolCapabilities(false),
 		server.WithStrictInputSchemaDefault(),
 		server.WithInputSchemaValidation(),

@@ -64,6 +64,13 @@ func TestStdioProtocol(t *testing.T) {
 				}
 				if protocol == "2026-07-28" {
 					assertModernResult(t, result)
+					if method == "server/discover" || method == "tools/list" {
+						if result["ttlMs"] != float64(300000) || result["cacheScope"] != "private" {
+							t.Fatalf("incorrect metadata cache hints: %v", result)
+						}
+					} else if result["ttlMs"] != nil || result["cacheScope"] != nil {
+						t.Fatalf("query result advertised metadata caching: %v", result)
+					}
 				} else if result["resultType"] != nil || result["ttlMs"] != nil || result["cacheScope"] != nil {
 					t.Fatalf("modern response fields leaked into %s: %v", protocol, result)
 				}
@@ -111,8 +118,10 @@ func TestStdioProtocol(t *testing.T) {
 			if len(tools) != 3 {
 				t.Fatalf("got %d tools, want 3", len(tools))
 			}
+			var names []string
 			for _, item := range tools {
 				tool := item.(map[string]any)
+				names = append(names, tool["name"].(string))
 				titles := map[string]string{
 					"lookup_ip":      "Look up an IP address",
 					"lookup_network": "Query a network",
@@ -128,6 +137,9 @@ func TestStdioProtocol(t *testing.T) {
 				if annotations["readOnlyHint"] != true || annotations["openWorldHint"] != false {
 					t.Fatalf("incorrect annotations: %v", annotations)
 				}
+			}
+			if !slices.IsSorted(names) {
+				t.Fatalf("tool definitions are not in a stable order: %v", names)
 			}
 			toolCall := func(name string, arguments map[string]any) map[string]any {
 				t.Helper()
