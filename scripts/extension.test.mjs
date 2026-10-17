@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { delimiter, join, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
 import {
@@ -382,6 +382,16 @@ test(
       args: server.args,
     };
     await checkServer(launch);
+    const antigravity = JSON.parse(await readFile("mcp_config.json", "utf8"));
+    const antigravityServer = antigravity.mcpServers.maxminddb;
+    await checkServer({
+      ...antigravityServer,
+      env: {
+        ...antigravityServer.env,
+        [process.platform === "win32" ? "Path" : "PATH"]:
+          temp + delimiter + process.env.PATH,
+      },
+    });
     await rm(openaiInstalled, { recursive: true });
     assert.equal(
       await unpackExtension({

@@ -257,9 +257,22 @@ The plugin includes a `setup` skill to check database status and perform a sampl
 
 This package follows Claude's plugin format, but Cowork installation and its settings UI still need manual validation. Use the MCPB for Claude Desktop chat. A local MCP plugin does not provide tools to Claude web or mobile. See [Claude's plugin documentation](https://support.claude.com/en/articles/13837440-use-plugins-in-claude).
 
-### Gemini CLI
+### Antigravity CLI (`agy`)
 
-Install the extension and enter your MaxMind account ID and license key when prompted:
+After installing `maxminddb-mcp` on PATH and configuring it in a [default location](#config-discovery-and-defaults), install the repository plugin:
+
+```bash
+agy plugin install https://github.com/oschwald/maxminddb-mcp
+agy plugin list
+```
+
+The plugin includes the MCP connection and setup skill. It uses the installed executable and its existing configuration. In Antigravity, ask it to check your MaxMindDB setup and look up `8.8.8.8`. For a direct MCP connection without the skill, run `agy mcp add maxminddb maxminddb-mcp` instead.
+
+Google replaced Gemini CLI for individual accounts with Antigravity CLI on June 18, 2026. Enterprise and API-key users can still use Gemini CLI. See [Google's transition announcement](https://github.com/google-gemini/gemini-cli/discussions/28017) and [Antigravity's plugin documentation](https://antigravity.google/docs/plugins).
+
+### Gemini CLI (legacy)
+
+For users who retain Gemini CLI access, install the extension and enter your MaxMind account ID and license key when prompted:
 
 ```bash
 gemini extensions install https://github.com/oschwald/maxminddb-mcp

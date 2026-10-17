@@ -38,8 +38,9 @@ database through a tool.
   key, and editions. Native release plugins also offer an existing database
   folder. The repository plugin uses Docker and supports downloads only.
   MCPB extension settings are a separate installation.
-- **ChatGPT:** The OpenAI plugin uses existing configuration and does not show
-  a settings form. The executable discovers
+- **ChatGPT and Antigravity:** These plugins use existing server configuration.
+  The Antigravity repository plugin also requires `maxminddb-mcp` on PATH.
+  If `MAXMINDDB_MCP_CONFIG` is set, the executable uses that file. Otherwise it checks
   `~/.config/maxminddb-mcp/config.toml`,
   `~/.config/maxminddb-mcp/GeoIP.conf`, then `/etc/GeoIP.conf`.
   See the ChatGPT desktop and configuration sections of the

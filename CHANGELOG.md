@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add repository manifests for Claude, Cursor, and Gemini, plus Glama ownership metadata.
+- Add repository manifests for Claude, Cursor, Antigravity, and legacy Gemini CLI, plus Glama ownership metadata.
 - Package native Gemini CLI extensions with releases and include their SHA-256 checksums.
 - Publish one universal MCPB containing all five supported native builds, with automatic platform selection and the existing settings UI.
 

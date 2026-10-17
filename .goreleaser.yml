@@ -218,7 +218,10 @@ release:
     Follow the [local plugin guide](https://github.com/oschwald/maxminddb-mcp#chatgpt-desktop-plugin-experimental).
     Existing server configuration is required. This is not a public directory listing.
 
-    **Gemini CLI:** Run `gemini extensions install https://github.com/oschwald/maxminddb-mcp`.
+    **Antigravity CLI:** Install and configure the standalone executable, then run
+    `agy plugin install https://github.com/oschwald/maxminddb-mcp`.
+
+    **Gemini CLI (legacy):** Run `gemini extensions install https://github.com/oschwald/maxminddb-mcp`.
     Gemini selects a native extension ZIP and prompts for MaxMind credentials.
     
     **Go Install:**
