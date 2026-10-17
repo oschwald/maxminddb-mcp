@@ -15,9 +15,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/oschwald/maxminddb-mcp/internal/config"
@@ -138,13 +140,21 @@ func TestUpdateRepairsMissingAndChangedFiles(t *testing.T) {
 			}
 		}
 		before, _ := updater.manager.GetReader("GeoLite2-ASN.mmdb")
-		results, err := updater.UpdateAll(t.Context())
+		var messages []string
+		results, err := updater.UpdateAll(
+			t.Context(),
+			func(message string) { messages = append(messages, message) },
+		)
 		if err != nil || len(results) != 1 || results[0].Error != "" {
 			t.Fatalf("%s: %+v, %v", action, results, err)
 		}
 		wantDownload := action == "missing" || action == "deleted" || action == "corrupted"
 		if results[0].Updated != wantDownload {
 			t.Fatalf("%s: wrong updated flag", action)
+		}
+		if len(messages) == 0 || messages[0] != "Checking GeoLite2-ASN" ||
+			slices.Contains(messages, "Validating GeoLite2-ASN") != wantDownload {
+			t.Fatalf("%s: unexpected progress: %v", action, messages)
 		}
 		installed, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(installed, data) {
@@ -161,6 +171,30 @@ func TestUpdateRepairsMissingAndChangedFiles(t *testing.T) {
 	if downloads.Load() != 3 {
 		t.Fatalf("got %d downloads, want 3", downloads.Load())
 	}
+}
+
+func TestDownloadProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var messages []string
+		progress := &downloadProgress{
+			edition: "GeoLite2-ASN",
+			report:  func(message string) { messages = append(messages, message) },
+		}
+		for i := range 3 {
+			if i == 2 {
+				time.Sleep(time.Second)
+			}
+			if n, err := progress.Write(make([]byte, 100)); n != 100 || err != nil {
+				t.Fatalf("progress writer: %d, %v", n, err)
+			}
+		}
+		if !slices.Equal(messages, []string{
+			"Downloading GeoLite2-ASN: 100 bytes received",
+			"Downloading GeoLite2-ASN: 300 bytes received",
+		}) {
+			t.Fatalf("unexpected download progress: %v", messages)
+		}
+	})
 }
 
 func TestBadDownloadPreservesInstalledFile(t *testing.T) {
@@ -332,7 +366,7 @@ func TestQueuedUpdateCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	active := make(chan struct{})
-	go func() { _, _ = updater.UpdateAll(ctx); close(active) }()
+	go func() { _, _ = updater.UpdateAll(ctx, nil); close(active) }()
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):
@@ -343,7 +377,7 @@ func TestQueuedUpdateCancellation(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			if all {
-				_, err := updater.UpdateAll(queued)
+				_, err := updater.UpdateAll(queued, nil)
 				done <- err
 			} else {
 				_, err := updater.UpdateDatabase(queued, "GeoLite2-ASN")

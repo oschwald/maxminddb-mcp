@@ -162,7 +162,7 @@ func testIteratorWithRealMMDB(t *testing.T, dbPath string) {
 	}
 
 	// Perform iteration
-	result, err := iterMgr.Iterate(context.Background(), iter, 10)
+	result, err := iterMgr.Iterate(context.Background(), iter, 10, nil)
 	if err != nil {
 		t.Fatalf("Iteration failed: %v", err)
 	}
@@ -185,7 +185,7 @@ func testIteratorWithRealMMDB(t *testing.T, dbPath string) {
 		t.Fatalf("Failed to create filtered iterator: %v", err)
 	}
 
-	filteredResult, err := iterMgr.Iterate(context.Background(), filteredIter, 10)
+	filteredResult, err := iterMgr.Iterate(context.Background(), filteredIter, 10, nil)
 	if err != nil {
 		t.Fatalf("Filtered iteration failed: %v", err)
 	}

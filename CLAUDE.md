@@ -18,6 +18,7 @@ npm run format:check
 
 - Preserve reviewed commits. Make follow-up changes in new atomic commits.
 - Keep credentials out of commits and logs. Config examples must use placeholders.
+- Send progress only for an active request with a valid progress token. Keep callbacks synchronous, throttle notifications, and omit unknown totals.
 - Stdout is for MCP messages. Use `log/slog` on stderr for application logs.
 - Validate tool arguments and resume tokens. Errors must set MCP `isError`.
 - Hold the per-edition file lock from the installed-file check through installation and reload. Keep lock files on disk.

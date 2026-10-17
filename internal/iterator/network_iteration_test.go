@@ -51,7 +51,7 @@ func TestNetworkIterationFilters(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := manager.Iterate(context.Background(), iter, 10)
+			result, err := manager.Iterate(context.Background(), iter, 10, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

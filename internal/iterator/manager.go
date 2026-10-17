@@ -229,6 +229,7 @@ func (m *Manager) Iterate(
 	ctx context.Context,
 	iterator *ManagedIterator,
 	maxResults int,
+	report func(string),
 ) (_ *IterationResult, err error) {
 	if iterator == nil {
 		return nil, errors.New("iterator cannot be nil")
@@ -257,10 +258,14 @@ func (m *Manager) Iterate(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if report != nil {
+		report("Scanning " + iterator.Network.String())
+	}
 	if iterator.next == nil && !iterator.exhausted {
 		iterator.next, iterator.stop = iter.Pull(iterator.Reader.NetworksWithin(iterator.Network))
 		if iterator.LastNetwork.IsValid() {
 			found := false
+			var scanned int64
 			for !found {
 				if err := ctx.Err(); err != nil {
 					return nil, err
@@ -275,6 +280,10 @@ func (m *Manager) Iterate(
 					return nil, err
 				}
 				found = result.Prefix() == iterator.LastNetwork
+				scanned++
+				if report != nil && scanned%1024 == 0 {
+					report(fmt.Sprintf("Restoring cursor: %d records scanned", scanned))
+				}
 			}
 		}
 	}
@@ -307,6 +316,15 @@ func (m *Manager) Iterate(
 			return nil, errors.New("iterator counter overflow; start a new query")
 		}
 		iterator.Processed++
+		if report != nil && iterator.Processed%1024 == 0 {
+			report(
+				fmt.Sprintf(
+					"Scanning %s: %d records processed",
+					iterator.Network,
+					iterator.Processed,
+				),
+			)
+		}
 		iterator.LastNetwork = record.Network
 		if matches {
 			iterator.Matched++

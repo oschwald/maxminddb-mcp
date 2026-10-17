@@ -325,7 +325,7 @@ func (s *Server) handleLookupNetwork(
 	}
 
 	// Perform iteration
-	result, err := s.iterMgr.Iterate(ctx, iter, int(maxResults))
+	result, err := s.iterMgr.Iterate(ctx, iter, int(maxResults), s.progressReporter(ctx, request))
 	if err != nil {
 		if created {
 			s.iterMgr.RemoveIterator(iter.ID)
@@ -354,7 +354,7 @@ func (s *Server) handleListDatabases(
 // handleUpdateDatabases handles the update_databases tool.
 func (s *Server) handleUpdateDatabases(
 	ctx context.Context,
-	_ mcp.CallToolRequest,
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	if s.updater == nil {
 		return toolError(
@@ -363,7 +363,7 @@ func (s *Server) handleUpdateDatabases(
 		), nil
 	}
 
-	results, err := s.updater.UpdateAll(ctx)
+	results, err := s.updater.UpdateAll(ctx, s.progressReporter(ctx, request))
 	if err != nil {
 		return toolError("update_failed", fmt.Sprintf("Update failed: %v", err)), nil
 	}

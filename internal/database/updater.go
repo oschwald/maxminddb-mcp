@@ -64,7 +64,7 @@ func NewUpdater(cfg *config.Config, manager *Manager) (*Updater, error) {
 }
 
 // UpdateAll updates all configured databases.
-func (u *Updater) UpdateAll(ctx context.Context) ([]UpdateResult, error) {
+func (u *Updater) UpdateAll(ctx context.Context, report func(string)) ([]UpdateResult, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -78,7 +78,10 @@ func (u *Updater) UpdateAll(ctx context.Context) ([]UpdateResult, error) {
 	results := make([]UpdateResult, 0, len(u.config.MaxMind.Editions))
 
 	for _, edition := range u.config.MaxMind.Editions {
-		result := u.updateDatabase(ctx, edition)
+		if err := ctx.Err(); err != nil {
+			return results, err
+		}
+		result := u.updateDatabase(ctx, edition, report)
 		results = append(results, result)
 	}
 
@@ -97,7 +100,7 @@ func (u *Updater) UpdateDatabase(ctx context.Context, edition string) (UpdateRes
 		return UpdateResult{}, err
 	}
 
-	result := u.updateDatabase(ctx, edition)
+	result := u.updateDatabase(ctx, edition, nil)
 	return result, nil
 }
 
@@ -122,7 +125,7 @@ func (u *Updater) RunUpdates(ctx context.Context) {
 }
 
 func (u *Updater) updateAndLog(ctx context.Context) {
-	results, err := u.UpdateAll(ctx)
+	results, err := u.UpdateAll(ctx, nil)
 	if err != nil {
 		slog.Error("Database update failed", "err", err)
 	}
@@ -136,7 +139,11 @@ func (u *Updater) updateAndLog(ctx context.Context) {
 }
 
 // updateDatabase performs the actual update (must be called with lock held).
-func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResult {
+func (u *Updater) updateDatabase(
+	ctx context.Context,
+	edition string,
+	report func(string),
+) UpdateResult {
 	result := UpdateResult{
 		Database: edition,
 		Updated:  false,
@@ -147,6 +154,9 @@ func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResu
 	if edition == "" || filepath.Base(edition) != edition || edition == "." || edition == ".." {
 		result.Error = "edition must be a database edition ID without a path"
 		return result
+	}
+	if report != nil {
+		report("Checking " + edition)
 	}
 	dbPath := filepath.Join(u.config.MaxMind.DatabaseDir, edition+".mmdb")
 	if err := os.MkdirAll(u.config.MaxMind.DatabaseDir, 0o750); err != nil {
@@ -201,6 +211,10 @@ func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResu
 	// Copy data and calculate MD5
 	hasher := md5.New() //nolint:gosec // MD5 used for file integrity checksums, not cryptographic security
 	writer := io.MultiWriter(file, hasher)
+	if report != nil {
+		report("Downloading " + edition)
+		writer = io.MultiWriter(writer, &downloadProgress{report: report, edition: edition})
+	}
 
 	size, err := io.Copy(writer, response.Reader)
 	if err != nil {
@@ -215,6 +229,9 @@ func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResu
 	}
 
 	// Verify MD5 if provided
+	if report != nil {
+		report("Validating " + edition)
+	}
 	newMD5 := hex.EncodeToString(hasher.Sum(nil))
 	if response.MD5 != "" && response.MD5 != newMD5 {
 		result.Error = fmt.Sprintf("MD5 mismatch: expected %s, got %s", response.MD5, newMD5)
@@ -254,6 +271,22 @@ func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResu
 	}
 
 	return result
+}
+
+type downloadProgress struct {
+	last    time.Time
+	report  func(string)
+	edition string
+	bytes   int64
+}
+
+func (p *downloadProgress) Write(data []byte) (int, error) {
+	p.bytes += int64(len(data))
+	if time.Since(p.last) >= time.Second {
+		p.last = time.Now()
+		p.report(fmt.Sprintf("Downloading %s: %d bytes received", p.edition, p.bytes))
+	}
+	return len(data), nil
 }
 
 // databaseChecksum reads the installed file so stale sidecar files cannot suppress repairs.

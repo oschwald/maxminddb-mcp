@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Report optional, throttled MCP progress for database downloads and network scans, including token cursor restoration.
+
 ### Changed
 
 - Limit retained iterators to 128 per server. Existing iterators can continue when new queries and token resumes reach the limit.

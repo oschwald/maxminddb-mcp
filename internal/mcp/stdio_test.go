@@ -32,42 +32,7 @@ func TestStdioProtocol(t *testing.T) {
 	for _, protocol := range []string{"2024-11-05", "2025-11-25", "2026-07-28"} {
 		t.Run(protocol, func(t *testing.T) {
 			server := testServer(t)
-			input, writeInput := io.Pipe()
-			readOutput, output := io.Pipe()
-			ctx, cancel := context.WithCancel(t.Context())
-			done := make(chan error, 1)
-			go func() { done <- server.Serve(ctx, input, output) }()
-			t.Cleanup(func() {
-				cancel()
-				_ = writeInput.Close()
-				_ = input.Close()
-				_ = readOutput.Close()
-				_ = output.Close()
-				select {
-				case err := <-done:
-					if err != nil && !errors.Is(err, context.Canceled) &&
-						!errors.Is(err, io.ErrClosedPipe) {
-						t.Error(err)
-					}
-				case <-time.After(2 * time.Second):
-					t.Error("stdio shutdown timed out")
-				}
-			})
-			responses := make(chan map[string]any, 1)
-			go func() {
-				decoder := json.NewDecoder(readOutput)
-				for {
-					var message map[string]any
-					if err := decoder.Decode(&message); err != nil {
-						return
-					}
-					select {
-					case responses <- message:
-					case <-ctx.Done():
-						return
-					}
-				}
-			}()
+			send, receive := connectStdio(t, server)
 			call := func(method string, params map[string]any) map[string]any {
 				t.Helper()
 				if protocol == "2026-07-28" {
@@ -86,21 +51,16 @@ func TestStdioProtocol(t *testing.T) {
 					"method":  method,
 					"params":  params,
 				}
-				go func() { _ = json.NewEncoder(writeInput).Encode(request) }()
-				select {
-				case response := <-responses:
-					if response["id"] != method || response["error"] != nil {
-						t.Fatalf("%s: %v", method, response)
-					}
-					result, ok := response["result"].(map[string]any)
-					if !ok {
-						t.Fatalf("%s returned no result: %v", method, response)
-					}
-					return result
-				case <-time.After(2 * time.Second):
-					t.Fatalf("%s timed out", method)
-					return nil
+				send(request)
+				response := receive()
+				if response["id"] != method || response["error"] != nil {
+					t.Fatalf("%s: %v", method, response)
 				}
+				result, ok := response["result"].(map[string]any)
+				if !ok {
+					t.Fatalf("%s returned no result: %v", method, response)
+				}
+				return result
 			}
 			if protocol == "2026-07-28" {
 				discovery := call("server/discover", map[string]any{})
@@ -122,10 +82,7 @@ func TestStdioProtocol(t *testing.T) {
 				if initialized["protocolVersion"] != protocol {
 					t.Fatalf("wrong negotiation: %v", initialized)
 				}
-				if err := json.NewEncoder(writeInput).
-					Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
-					t.Fatal(err)
-				}
+				send(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 			}
 			listed := call("tools/list", map[string]any{})
 			tools := listed["tools"].([]any)
@@ -237,4 +194,68 @@ func wireContent(t *testing.T, result map[string]any) map[string]any {
 		return structured
 	}
 	return text
+}
+
+func connectStdio(t *testing.T, server *Server) (func(map[string]any), func() map[string]any) {
+	t.Helper()
+	input, writeInput := io.Pipe()
+	readOutput, output := io.Pipe()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, input, output) }()
+	t.Cleanup(func() {
+		cancel()
+		_ = writeInput.Close()
+		_ = input.Close()
+		_ = readOutput.Close()
+		_ = output.Close()
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, context.Canceled) &&
+				!errors.Is(err, io.ErrClosedPipe) {
+				t.Error(err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Error("stdio shutdown timed out")
+		}
+	})
+	responses := make(chan map[string]any, 1)
+	go func() {
+		decoder := json.NewDecoder(readOutput)
+		for {
+			var message map[string]any
+			if err := decoder.Decode(&message); err != nil {
+				return
+			}
+			select {
+			case responses <- message:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	send := func(message map[string]any) {
+		t.Helper()
+		written := make(chan error, 1)
+		go func() { written <- json.NewEncoder(writeInput).Encode(message) }()
+		select {
+		case err := <-written:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("stdio write timed out")
+		}
+	}
+	receive := func() map[string]any {
+		t.Helper()
+		select {
+		case message := <-responses:
+			return message
+		case <-time.After(5 * time.Second):
+			t.Fatal("stdio read timed out")
+			return nil
+		}
+	}
+	return send, receive
 }

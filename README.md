@@ -255,6 +255,8 @@ Application errors include an `error` object with `code` and `message`. Common c
 
 ## Protocol and development
 
+Clients can request progress for `lookup_network` and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
+
 Stdio integration tests cover the legacy initialize handshake (`2024-11-05` and `2025-11-25`) and the `2026-07-28` discovery flow. Protocol negotiation and transport behavior are provided by `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
 
 Use an MCP client for manual checks. A one-line pipe that closes stdin immediately can cancel a request before its response is written. Automated protocol tests are available with:
