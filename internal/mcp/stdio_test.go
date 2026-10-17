@@ -115,14 +115,15 @@ func TestStdioProtocol(t *testing.T) {
 			}
 			listed := call("tools/list", map[string]any{})
 			tools := listed["tools"].([]any)
-			if len(tools) != 9 {
-				t.Fatalf("got %d tools, want 9", len(tools))
+			if len(tools) != 10 {
+				t.Fatalf("got %d tools, want 10", len(tools))
 			}
 			var names []string
 			for _, item := range tools {
 				tool := item.(map[string]any)
 				names = append(names, tool["name"].(string))
 				titles := map[string]string{
+					"install_database":  "Install a database from a URL",
 					"lookup_ip":         "Look up an IP address",
 					"compare_databases": "Compare databases",
 					"summarize_network": "Summarize a network",
@@ -140,7 +141,9 @@ func TestStdioProtocol(t *testing.T) {
 					t.Errorf("%s has no output schema", tool["name"])
 				}
 				annotations := tool["annotations"].(map[string]any)
-				if annotations["readOnlyHint"] != true || annotations["openWorldHint"] != false {
+				install := tool["name"] == "install_database"
+				if annotations["readOnlyHint"] != !install ||
+					annotations["openWorldHint"] != install {
 					t.Fatalf("incorrect annotations: %v", annotations)
 				}
 			}

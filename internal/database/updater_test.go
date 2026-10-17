@@ -221,7 +221,7 @@ func TestBadDownloadPreservesInstalledFile(t *testing.T) {
 		); err != nil {
 			t.Fatal(err)
 		}
-		result, err := updater.UpdateDatabase(t.Context(), "GeoLite2-ASN")
+		result, err := updater.InstallEdition(t.Context(), "GeoLite2-ASN", nil)
 		if err != nil || result.Error == "" || result.Updated {
 			t.Fatalf("bad download accepted: %+v, %v", result, err)
 		}
@@ -245,7 +245,7 @@ func TestDownloadCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan UpdateResult, 1)
-	go func() { result, _ := updater.UpdateDatabase(ctx, "GeoLite2-ASN"); done <- result }()
+	go func() { result, _ := updater.InstallEdition(ctx, "GeoLite2-ASN", nil); done <- result }()
 	select {
 	case <-started:
 	case <-time.After(time.Second):
@@ -296,7 +296,7 @@ func TestUpdateAllowsSlowDownload(t *testing.T) {
 	}
 	updater.client = &mclient
 	synctest.Test(t, func(t *testing.T) {
-		result, err := updater.UpdateDatabase(t.Context(), "GeoLite2-ASN")
+		result, err := updater.InstallEdition(t.Context(), "GeoLite2-ASN", nil)
 		if err != nil || result.Error != "" || !result.Updated {
 			t.Fatalf("slow download failed: %+v, %v", result, err)
 		}
@@ -328,7 +328,7 @@ func TestUpdateAcrossProcesses(t *testing.T) {
 			ctx, cancel = context.WithTimeout(ctx, 200*time.Millisecond)
 			defer cancel()
 		}
-		result, err := updater.UpdateDatabase(ctx, "GeoLite2-ASN")
+		result, err := updater.InstallEdition(ctx, "GeoLite2-ASN", nil)
 		if err != nil || result.Updated {
 			t.Fatalf("unexpected update: %+v, %v", result, err)
 		}
@@ -368,7 +368,7 @@ func TestUpdateAcrossProcesses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	finished := make(chan UpdateResult, 1)
-	go func() { result, _ := updater.UpdateDatabase(ctx, "GeoLite2-ASN"); finished <- result }()
+	go func() { result, _ := updater.InstallEdition(ctx, "GeoLite2-ASN", nil); finished <- result }()
 	select {
 	case <-started:
 	case <-ctx.Done():
@@ -425,7 +425,7 @@ func TestQueuedUpdateCancellation(t *testing.T) {
 				_, err := updater.UpdateAll(queued, nil)
 				done <- err
 			} else {
-				_, err := updater.UpdateDatabase(queued, "GeoLite2-ASN")
+				_, err := updater.InstallEdition(queued, "GeoLite2-ASN", nil)
 				done <- err
 			}
 		}()

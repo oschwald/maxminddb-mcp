@@ -49,7 +49,10 @@ On iterator_expired, resume with the latest token. If the database build changed
 On iterator_limit, continue an existing iterator or wait for idle queries to expire.
 If no_databases is returned, call list_databases for download status and setup instructions.
 If its status is downloading, tell the user to wait and check again later. Do not start another update.
-When available, update_databases downloads and replaces database files.`
+When available, install_edition downloads a new MaxMind edition and remembers it for future updates.
+update_databases updates configured and API-installed MaxMind editions.
+Use install_database for a user-provided HTTP(S) URL and a destination .mmdb filename.
+URL imports are one-time downloads. Replacing an existing URL import requires overwrite: true.`
 
 // New creates a new MCP server instance.
 func New(
@@ -100,6 +103,7 @@ func (s *Server) Serve(ctx context.Context, input io.Reader, output io.Writer) e
 
 // registerTools registers all MCP tools.
 func (s *Server) registerTools() {
+	s.registerInstallTools()
 	// lookup_ip tool
 	lookupIPTool := mcp.NewTool("lookup_ip",
 		mcp.WithToolTitle("Look up an IP address"),

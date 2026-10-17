@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Install new MaxMind editions through MCP and remember them across restarts for scheduled and manual updates.
+- Import databases from HTTP(S) URLs, including gzip, tar, and ZIP downloads, with validation and explicit replacement of existing files.
 - Configure MaxMind downloads or existing MMDB files through Claude Desktop extension settings, without a config file or CLI.
 - Build native MCPB extensions and experimental Claude plugin ZIPs with release binaries. Include them in release checksums.
 - Publish MCP Registry metadata from release CI and support automatic Homebrew tap updates after credential setup.
