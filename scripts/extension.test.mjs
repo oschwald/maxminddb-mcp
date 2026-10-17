@@ -172,6 +172,7 @@ test(
       extensionPath: installed,
       systemDirs: { HOME: temp },
       userConfig: {
+        download_enabled: true,
         account_id: "invalid-account",
         license_key: "do-not-log-this-key",
       },
