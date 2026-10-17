@@ -40,6 +40,7 @@
       "type": "boolean",
       "title": "Download and update MaxMind databases",
       "description": "Download on first use and check for updates every 24 hours. Turn off to use existing MMDB files without a MaxMind account.",
+      "required": true,
       "default": true
     },
     "database_dir": {

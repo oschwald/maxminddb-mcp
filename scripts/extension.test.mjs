@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
-import { getMcpConfigForManifest, unpackExtension } from "@anthropic-ai/mcpb";
+import {
+  getMcpConfigForManifest,
+  hasRequiredConfigMissing,
+  unpackExtension,
+} from "@anthropic-ai/mcpb";
 import { packageExtension } from "./package-extension.mjs";
 
 test(
@@ -48,6 +52,14 @@ test(
     );
     assert.equal(manifest.server.type, "binary");
     assert.equal(manifest.user_config.license_key.sensitive, true);
+    assert.equal(hasRequiredConfigMissing({ manifest, userConfig: {} }), true);
+    assert.equal(
+      hasRequiredConfigMissing({
+        manifest,
+        userConfig: { download_enabled: false },
+      }),
+      false
+    );
     const plugin = JSON.parse(
       await readFile(join(installed, ".claude-plugin/plugin.json"), "utf8")
     );
