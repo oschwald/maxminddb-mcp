@@ -41,7 +41,7 @@ Tests use bundled MMDB fixtures and local HTTP servers. They do not require a Ma
 
 CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. Fixture generator tests and vulnerability checks run on Linux.
 
-The stdio tests exercise the legacy initialize handshake and current per-request protocol metadata. To run them with the startup and shutdown tests:
+The stdio tests cover all five supported protocol revisions, discovery-free modern requests, response identity and result types, invalid metadata, unsupported versions, progress, and cancellation notifications. To run them with the startup and shutdown tests:
 
 ```bash
 go test -race ./internal/mcp ./cmd/maxminddb-mcp

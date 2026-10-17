@@ -12,6 +12,7 @@ import (
 	"time"
 
 	sdk "github.com/mark3labs/mcp-go/mcp"
+	"github.com/oschwald/maxminddb-mcp/internal/config"
 	"github.com/oschwald/maxminddb-mcp/internal/database"
 	"github.com/oschwald/maxminddb-mcp/internal/iterator"
 )
@@ -29,6 +30,24 @@ func testServer(t *testing.T) *Server {
 	manager := iterator.New(time.Minute, time.Second)
 	t.Cleanup(manager.StopCleanup)
 	return New(createTestMCPConfig(t), db, nil, manager, "test")
+}
+
+func testUpdatingServer(t *testing.T, handler http.Handler) *Server {
+	t.Helper()
+	endpoint := httptest.NewServer(handler)
+	t.Cleanup(endpoint.Close)
+	server := testServer(t)
+	cfg := server.config
+	cfg.Mode = config.ModeMaxMind
+	cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
+	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
+	cfg.MaxMind.DatabaseDir = t.TempDir()
+	cfg.MaxMind.Endpoint = endpoint.URL
+	updater, err := database.NewUpdater(cfg, server.dbManager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(cfg, server.dbManager, updater, server.iterMgr, "test")
 }
 
 func networkRequest(args map[string]any) sdk.CallToolRequest {

@@ -4,15 +4,12 @@ import (
 	"context"
 	"math"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	sdk "github.com/mark3labs/mcp-go/mcp"
-	"github.com/oschwald/maxminddb-mcp/internal/config"
-	"github.com/oschwald/maxminddb-mcp/internal/database"
 )
 
 type progressSession struct {
@@ -90,7 +87,7 @@ func TestStdioUpdateProgress(t *testing.T) {
 	for _, protocol := range []string{"2025-11-25", "2026-07-28"} {
 		t.Run(protocol, func(t *testing.T) {
 			release := make(chan struct{})
-			endpoint := httptest.NewServer(
+			server := testUpdatingServer(t,
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					select {
 					case <-release:
@@ -99,19 +96,6 @@ func TestStdioUpdateProgress(t *testing.T) {
 					w.WriteHeader(http.StatusUnauthorized)
 				}),
 			)
-			t.Cleanup(endpoint.Close)
-			server := testServer(t)
-			cfg := server.config
-			cfg.Mode = config.ModeMaxMind
-			cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
-			cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
-			cfg.MaxMind.DatabaseDir = t.TempDir()
-			cfg.MaxMind.Endpoint = endpoint.URL
-			updater, err := database.NewUpdater(cfg, server.dbManager)
-			if err != nil {
-				t.Fatal(err)
-			}
-			server = New(cfg, server.dbManager, updater, server.iterMgr, "test")
 			send, receive := connectStdio(t, server)
 			meta := map[string]any{"progressToken": "download"}
 			if protocol == "2026-07-28" {
