@@ -30,6 +30,18 @@ type Server struct {
 	iterMgr   *iterator.Manager
 }
 
+const serverInstructions = `Query local GeoIP2, GeoLite2, and custom MMDB databases.
+Call list_databases first and use its exact filenames when selecting a database.
+Use lookup_ip for an address. Use lookup_network for stored records overlapping a CIDR range.
+For network queries, specify database when more than one is loaded. Field names depend on the database.
+Example ASN filter: {"field":"autonomous_system_number","operator":"equals","value":13335}.
+Continue pages with the same network and database, the returned iterator_id, and the latest resume_token.
+Omit filters and filter_mode to keep the original query. Stop when has_more is false.
+On iterator_expired, resume with the latest token. If the database build changed, start a new query.
+On iterator_limit, continue an existing iterator or wait for idle queries to expire.
+If no_databases is returned, check server logs for loading or download status.
+When available, update_databases downloads and replaces database files.`
+
 // New creates a new MCP server instance.
 func New(
 	cfg *config.Config,
@@ -41,6 +53,7 @@ func New(
 	mcpServer := server.NewMCPServer(
 		"MaxMindDB Server",
 		version,
+		server.WithInstructions(serverInstructions),
 		server.WithToolCapabilities(false),
 		server.WithStrictInputSchemaDefault(),
 		server.WithInputSchemaValidation(),
@@ -69,6 +82,7 @@ func (s *Server) Serve(ctx context.Context, input io.Reader, output io.Writer) e
 func (s *Server) registerTools() {
 	// lookup_ip tool
 	lookupIPTool := mcp.NewTool("lookup_ip",
+		mcp.WithToolTitle("Look up an IP address"),
 		mcp.WithDescription("Look up an IP address in one database or all loaded databases"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -83,6 +97,7 @@ func (s *Server) registerTools() {
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(
 		"lookup_network",
+		mcp.WithToolTitle("Query a network"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(false),
@@ -150,6 +165,7 @@ func (s *Server) registerTools() {
 
 	// list_databases tool
 	listDBTool := mcp.NewTool("list_databases",
+		mcp.WithToolTitle("List databases"),
 		mcp.WithDescription("List all available MaxMind databases"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -165,6 +181,7 @@ func (s *Server) registerTools() {
 	if s.config.Mode == config.ModeMaxMind || s.config.Mode == config.ModeGeoIPCompat {
 		updateDBTool := mcp.NewTool(
 			"update_databases",
+			mcp.WithToolTitle("Update databases"),
 			mcp.WithDescription(
 				"Download and replace configured databases with the latest MaxMind editions",
 			),

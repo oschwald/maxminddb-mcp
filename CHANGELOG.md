@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Publish server usage instructions through initialization and discovery, and add readable tool titles.
+
 - Report optional, throttled MCP progress for database downloads and network scans, including token cursor restoration.
 
 ### Changed

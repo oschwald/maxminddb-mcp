@@ -67,6 +67,9 @@ func TestStdioProtocol(t *testing.T) {
 				if discovery["supportedVersions"].([]any)[0] != protocol {
 					t.Fatal("current protocol not advertised")
 				}
+				if discovery["instructions"] != serverInstructions {
+					t.Fatal("discovery omitted the server instructions")
+				}
 			} else {
 				initialized := call(
 					"initialize",
@@ -82,6 +85,9 @@ func TestStdioProtocol(t *testing.T) {
 				if initialized["protocolVersion"] != protocol {
 					t.Fatalf("wrong negotiation: %v", initialized)
 				}
+				if initialized["instructions"] != serverInstructions {
+					t.Fatal("initialization omitted the server instructions")
+				}
 				send(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 			}
 			listed := call("tools/list", map[string]any{})
@@ -91,6 +97,14 @@ func TestStdioProtocol(t *testing.T) {
 			}
 			for _, item := range tools {
 				tool := item.(map[string]any)
+				titles := map[string]string{
+					"lookup_ip":      "Look up an IP address",
+					"lookup_network": "Query a network",
+					"list_databases": "List databases",
+				}
+				if tool["title"] != titles[tool["name"].(string)] {
+					t.Fatalf("incorrect display title: %v", tool)
+				}
 				if protocol != "2024-11-05" && tool["outputSchema"] == nil {
 					t.Errorf("%s has no output schema", tool["name"])
 				}
