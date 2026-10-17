@@ -68,13 +68,12 @@ type NetworkResult struct {
 
 // IterationResult contains the results of an iteration batch.
 type IterationResult struct {
-	IteratorID         string          `json:"iterator_id"`
-	ResumeToken        string          `json:"resume_token"`
-	Results            []NetworkResult `json:"results"`
-	TotalProcessed     int64           `json:"total_processed"`
-	TotalMatched       int64           `json:"total_matched"`
-	EstimatedRemaining int64           `json:"estimated_remaining,omitempty"`
-	HasMore            bool            `json:"has_more"`
+	IteratorID     string          `json:"iterator_id"`
+	ResumeToken    string          `json:"resume_token"`
+	Results        []NetworkResult `json:"results"`
+	TotalProcessed int64           `json:"total_processed"`
+	TotalMatched   int64           `json:"total_matched"`
+	HasMore        bool            `json:"has_more"`
 }
 
 // Manager manages stateful network iterators.

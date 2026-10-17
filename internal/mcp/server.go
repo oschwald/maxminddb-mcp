@@ -41,7 +41,10 @@ func New(
 	mcpServer := server.NewMCPServer(
 		"MaxMindDB Server",
 		version,
-		server.WithToolCapabilities(true),
+		server.WithToolCapabilities(false),
+		server.WithStrictInputSchemaDefault(),
+		server.WithInputSchemaValidation(),
+		server.WithOutputSchemaValidation(),
 	)
 
 	s := &Server{
@@ -66,7 +69,12 @@ func (s *Server) Serve(ctx context.Context, input io.Reader, output io.Writer) e
 func (s *Server) registerTools() {
 	// lookup_ip tool
 	lookupIPTool := mcp.NewTool("lookup_ip",
-		mcp.WithDescription("Look up information for a specific IP address"),
+		mcp.WithDescription("Look up an IP address in one database or all loaded databases"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithOpenWorldHintAnnotation(false),
+		mcp.WithRawOutputSchema([]byte(ipOutputSchema)),
 		mcp.WithString("ip", mcp.Required(), mcp.Description("IP address to lookup")),
 		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
 	)
@@ -75,6 +83,11 @@ func (s *Server) registerTools() {
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(
 		"lookup_network",
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(false),
+		mcp.WithOpenWorldHintAnnotation(false),
+		mcp.WithRawOutputSchema([]byte(networkOutputSchema)),
 		mcp.WithDescription(
 			"Query a CIDR range with optional filters. filters must be an array of objects with keys: field, operator, value. Example: {\"field\":\"traits.user_type\",\"operator\":\"equals\",\"value\":\"residential\"}. Supported operators: equals, not_equals, in, not_in, contains, regex, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists.",
 		),
@@ -83,16 +96,53 @@ func (s *Server) registerTools() {
 			mcp.Required(),
 			mcp.Description("CIDR network to scan (e.g., '192.168.1.0/24')"),
 		),
-		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
+		mcp.WithString(
+			"database",
+			mcp.Description(
+				"Database name from list_databases; required when more than one is loaded",
+			),
+		),
 		mcp.WithArray(
 			"filters",
-			mcp.Description("Array of filter objects: {field, operator, value} (optional)"),
+			mcp.Description(
+				"Filters for a new query; omit to keep filters when continuing a query",
+			),
+			mcp.Items(map[string]any{
+				"type": "object", "additionalProperties": false,
+				"required": []string{"field", "operator", "value"},
+				"properties": map[string]any{
+					"field": map[string]any{"type": "string", "minLength": 1},
+					"operator": map[string]any{
+						"type": "string",
+						"enum": append(
+							filter.SupportedOperators(),
+							"eq",
+							"ne",
+							"gt",
+							"lt",
+							"gte",
+							"lte",
+						),
+					},
+					"value": map[string]any{},
+				},
+			}),
 		),
 		mcp.WithString(
 			"filter_mode",
+			mcp.Enum(
+				"and",
+				"or",
+			),
 			mcp.Description("How to combine filters: 'and' or 'or' (default: 'and')"),
 		),
-		mcp.WithNumber("max_results", mcp.Description("Maximum results to return (default: 1000)")),
+		mcp.WithInteger(
+			"max_results",
+			mcp.Min(1),
+			mcp.Max(iterator.MaxResults),
+			mcp.DefaultNumber(iterator.MaxResults),
+			mcp.Description("Page size from 1 to 1000"),
+		),
 		mcp.WithString("iterator_id", mcp.Description("Resume existing iterator (fast path)")),
 		mcp.WithString("resume_token", mcp.Description("Fallback token if iterator expired")),
 	)
@@ -101,13 +151,30 @@ func (s *Server) registerTools() {
 	// list_databases tool
 	listDBTool := mcp.NewTool("list_databases",
 		mcp.WithDescription("List all available MaxMind databases"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithOpenWorldHintAnnotation(false),
+		mcp.WithOutputSchema[struct {
+			Databases []*database.Info `json:"databases"`
+		}](),
 	)
 	s.mcp.AddTool(listDBTool, s.handleListDatabases)
 
 	// update_databases tool (only for maxmind/geoip_compat modes)
 	if s.config.Mode == config.ModeMaxMind || s.config.Mode == config.ModeGeoIPCompat {
-		updateDBTool := mcp.NewTool("update_databases",
-			mcp.WithDescription("Trigger manual update of MaxMind databases"),
+		updateDBTool := mcp.NewTool(
+			"update_databases",
+			mcp.WithDescription(
+				"Download and replace configured databases with the latest MaxMind editions",
+			),
+			mcp.WithReadOnlyHintAnnotation(false),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithOutputSchema[struct {
+				Results []database.UpdateResult `json:"results"`
+			}](),
 		)
 		s.mcp.AddTool(updateDBTool, s.handleUpdateDatabases)
 	}
@@ -313,15 +380,19 @@ func (s *Server) lookupIPInSingleDatabase(
 	}
 
 	var record map[string]any
-	if err := reader.Lookup(ip).Decode(&record); err != nil {
+	lookup := reader.Lookup(ip)
+	if err := lookup.Decode(&record); err != nil {
 		return toolError("lookup_failed", fmt.Sprintf("Lookup failed: %v", err)), nil
 	}
 
 	result := map[string]any{
-		"ip":   ipStr,
-		"data": record,
+		"ip": ipStr, "database": dbName,
+		"data": record, "found": lookup.Found(), "network": nil,
 	}
 
+	if lookup.Found() {
+		result["network"] = lookup.Prefix().String()
+	}
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
@@ -337,12 +408,19 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 		}
 
 		var record map[string]any
-		if err := reader.Lookup(ip).Decode(&record); err != nil {
-			continue // Skip databases that don't contain this IP
+		lookup := reader.Lookup(ip)
+		if err := lookup.Decode(&record); err != nil {
+			return toolError(
+				"lookup_failed",
+				fmt.Sprintf("Lookup in %s failed: %v", dbInfo.Name, err),
+			), nil
 		}
 
 		dbResult := map[string]any{
-			"data": record,
+			"data": record, "found": lookup.Found(), "network": nil,
+		}
+		if lookup.Found() {
+			dbResult["network"] = lookup.Prefix().String()
 		}
 
 		results[dbInfo.Name] = dbResult
