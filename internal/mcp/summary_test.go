@@ -210,6 +210,33 @@ func TestSummaryLimitsAndCancellation(t *testing.T) {
 	}
 }
 
+func TestSummaryScanLimitWithNoMatches(t *testing.T) {
+	reader, err := maxminddb.Open("testdata/dense.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	engine := filter.New(
+		[]filter.Filter{{Field: "absent", Operator: "exists", Value: true}},
+		filter.ModeAnd,
+	)
+	result, err := summarize(
+		t.Context(),
+		reader,
+		netip.MustParsePrefix("2001:db8:ffff::/112"),
+		"$",
+		engine,
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "10,000 records") {
+		t.Fatalf("scan limit not enforced: %+v, %v", result, err)
+	}
+	if result.ScannedRecords != maxAnalysisRecords || result.MatchedRecords != 0 ||
+		len(result.Groups) != 0 {
+		t.Fatalf("unexpected filtered scan: %+v", result)
+	}
+}
+
 func BenchmarkSummary(b *testing.B) {
 	for _, test := range []struct{ file, network, field string }{
 		{"old", "10.0.0.0/16", "country"}, {"dense", "2001:db8:ffff::/115", "$"},
