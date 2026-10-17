@@ -12,6 +12,11 @@ import (
 	"github.com/oschwald/maxminddb-golang/v2"
 )
 
+const (
+	testDB        = "test-db"
+	filterModeAnd = "and"
+)
+
 func TestNew(t *testing.T) {
 	ttl := 30 * time.Minute
 	cleanupInterval := 5 * time.Minute
