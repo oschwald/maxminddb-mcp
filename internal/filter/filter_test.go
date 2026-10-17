@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"math"
 	"slices"
 	"testing"
 )
@@ -634,6 +635,50 @@ func TestNumericEquality(t *testing.T) {
 						got,
 						want,
 					)
+				}
+			}
+		})
+	}
+}
+
+func TestNumericOrdering(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		field, value any
+		comparison   int
+		valid        bool
+	}{
+		{"equal mixed types", uint32(42), float64(42), 0, true},
+		{"fraction", uint64(42), 42.5, -1, true},
+		{"large integer", uint64(1<<53 + 1), float64(1 << 53), 1, true},
+		{"uint64 boundary", uint64(1<<64 - 1), float64(1 << 64), -1, true},
+		{"large signed integer", int64(-1<<53 - 1), float64(-1 << 53), -1, true},
+		{"signed and unsigned", int64(-1), uint64(1<<64 - 1), -1, true},
+		{"numeric string", "42.5", uint64(42), 1, true},
+		{"infinity", math.Inf(1), uint64(1<<64 - 1), 1, true},
+		{"negative infinity", math.Inf(-1), int64(-1 << 63), -1, true},
+		{"NaN", math.NaN(), 1, 0, false},
+		{"invalid string", "unknown", 1, 0, false},
+		{"boolean", true, 1, 0, false},
+		{"nil", nil, 1, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, reverse := range []bool{false, true} {
+				field, value, comparison := tc.field, tc.value, tc.comparison
+				if reverse {
+					field, value, comparison = value, field, -comparison
+				}
+				for op, matches := range map[string]bool{
+					"greater_than": comparison > 0, "greater_than_or_equal": comparison >= 0,
+					"less_than": comparison < 0, "less_than_or_equal": comparison <= 0,
+				} {
+					engine := New([]Filter{{Field: "n", Operator: op, Value: value}}, ModeAnd)
+					if got, want := engine.Matches(
+						map[string]any{"n": field},
+					), tc.valid &&
+						matches; got != want {
+						t.Errorf("%v %s %v: got %v, want %v", field, op, value, got, want)
+					}
 				}
 			}
 		})

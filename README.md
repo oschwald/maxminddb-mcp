@@ -239,7 +239,7 @@ Fields use dot notation, such as `country.iso_code`. Operators and aliases use l
 | `less_than`, `less_than_or_equal` (`lt`, `lte`)       | A number                             |
 | `exists`                                              | A boolean                            |
 
-Numeric equality works across decoded MMDB integers and JSON numbers. JSON clients can lose precision for integers above 2⁵³. Numeric ordering also converts values to floating point.
+Numeric equality and ordering compare decoded MMDB integers and JSON numbers without rounding integers to floating point. JSON clients can still lose precision for integers above 2⁵³ before sending them. Ordering also accepts numeric strings through floating-point conversion.
 
 ### `list_databases`
 

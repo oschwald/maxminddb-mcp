@@ -2,7 +2,9 @@
 package filter
 
 import (
+	"cmp"
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -227,50 +229,40 @@ func matchesRegex(fieldValue, filterValue any) bool {
 
 // compareGreater compares if fieldValue > filterValue.
 func compareGreater(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
-
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
-	return fieldNum > filterNum
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison > 0
 }
 
 // compareLess compares if fieldValue < filterValue.
 func compareLess(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
-
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
-	return fieldNum < filterNum
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison < 0
 }
 
 // compareGreaterEqual compares if fieldValue >= filterValue.
 func compareGreaterEqual(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
-
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
-	return fieldNum >= filterNum
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison >= 0
 }
 
 // compareLessEqual compares if fieldValue <= filterValue.
 func compareLessEqual(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison <= 0
+}
 
-	if err1 != nil || err2 != nil {
-		return false
+func compareNumbers(fieldValue, filterValue any) (int, bool) {
+	fieldNumber, filterNumber := exactNumber(fieldValue), exactNumber(filterValue)
+	if fieldNumber != nil && filterNumber != nil {
+		return fieldNumber.Cmp(filterNumber), true
 	}
-
-	return fieldNum <= filterNum
+	// Preserve numeric string coercion and IEEE infinity ordering.
+	fieldFloat, err1 := toFloat64(fieldValue)
+	filterFloat, err2 := toFloat64(filterValue)
+	if err1 != nil || err2 != nil || math.IsNaN(fieldFloat) || math.IsNaN(filterFloat) {
+		return 0, false
+	}
+	return cmp.Compare(fieldFloat, filterFloat), true
 }
 
 // toFloat64 converts various numeric types to float64.
