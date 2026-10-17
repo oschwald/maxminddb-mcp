@@ -88,7 +88,7 @@ An explicit `MAXMINDDB_MCP_CONFIG` must point to an existing `.toml` file or a f
 2. `~/.config/maxminddb-mcp/GeoIP.conf`
 3. `/etc/GeoIP.conf`
 
-The default database directory is `~/.cache/maxminddb-mcp/databases`. Database paths and `geoip_compat.config_path` beginning with `~/` are expanded. Duration defaults are `24h` for updates, `10m` for iterator idle expiry, and `1m` for cleanup. All durations must be positive, including when automatic updates are disabled.
+The default database directory is `~/.cache/maxminddb-mcp/databases`. Database paths and `geoip_compat.config_path` beginning with `~/` are expanded. Duration defaults are `24h` for updates, `10m` for iterator idle expiry, and `1m` for cleanup. All durations must be positive, including when automatic updates are disabled. Unknown TOML settings cause a startup error that lists their names. Fix or remove those settings before starting the server.
 
 Logging uses environment variables:
 

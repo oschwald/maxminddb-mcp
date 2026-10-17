@@ -1,11 +1,13 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -100,7 +102,17 @@ func loadTOMLConfig(path string, config *Config) error {
 		return err
 	}
 
-	if err := toml.Unmarshal(data, config); err != nil {
+	if err := toml.NewDecoder(bytes.NewReader(data)).
+		DisallowUnknownFields().
+		Decode(config); err != nil {
+		var missing *toml.StrictMissingError
+		if errors.As(err, &missing) {
+			fields := make([]string, len(missing.Errors))
+			for i, field := range missing.Errors {
+				fields[i] = strings.Join(field.Key(), ".")
+			}
+			return fmt.Errorf("unknown TOML settings %s: %w", strings.Join(fields, ", "), err)
+		}
 		return err
 	}
 	if config.Mode != ModeGeoIPCompat {

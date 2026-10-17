@@ -65,6 +65,33 @@ func TestExplicitConfigMustExist(t *testing.T) {
 	}
 }
 
+func TestUnknownTOMLSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name, content, field string
+	}{
+		{"root", "auto_udpate = false\n", "auto_udpate"},
+		{"nested", "[maxmind]\nlicense_kee = 'test-secret'\n", "maxmind.license_kee"},
+		{"section", "[maxmnd]\naccount_id = 123\n", "maxmnd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("MAXMINDDB_MCP_CONFIG", path)
+			for _, load := range []func() (*Config, error){Load, func() (*Config, error) { return LoadConfig(path) }} {
+				_, err := load()
+				if err == nil || !strings.Contains(err.Error(), tc.field) {
+					t.Fatalf("unknown setting %s was not reported: %v", tc.field, err)
+				}
+				if strings.Contains(err.Error(), "test-secret") {
+					t.Fatal("config error exposed a setting value")
+				}
+			}
+		})
+	}
+}
+
 func TestPositiveDurations(t *testing.T) {
 	for _, field := range []string{"update_interval", "iterator_ttl", "iterator_cleanup_interval"} {
 		for _, duration := range []string{"0s", "-1s"} {
