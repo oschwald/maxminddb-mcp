@@ -184,6 +184,15 @@ Arguments: required `ip` (IPv4 or IPv6), optional `database` from `list_database
 
 A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`. If no database is available, an all-database lookup returns `no_databases`, as network lookup does. Check server logs for loading or download status.
 
+### `lookup_ips`
+
+Accepts `ips`, an array of 1 to 100 IP address strings, and optional `database`.
+Returns a `results` array in input order, including duplicates. Each entry has
+the same fields as `lookup_ip`, or `ip` and an `error` object. A missing record
+is a successful result with `found: false`. Any failed address sets the batch's
+MCP `isError` flag while preserving the other results. Cancellation stops the
+batch and returns an error.
+
 ### `lookup_network`
 
 Returns database network records overlapping a CIDR range. It does not return one result per IP address.
@@ -226,6 +235,36 @@ Live iterators retain a cursor. Token resumes scan to the saved position once. R
 
 A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. Each server retains at most 128 iterators, including completed queries until they expire. Expired entries are reclaimed before creating an iterator. At the limit, new queries and token resumes return `iterator_limit`. Continue with an existing `iterator_id` or wait for idle entries to expire. A failed or canceled first page releases its iterator immediately.
 
+### `lookup_range`
+
+Accepts required `start_ip` and `end_ip`, both inclusive, plus the same database,
+filter, field-selection, and pagination arguments as `lookup_network`. Endpoints
+must be ordered addresses of the same family without zone identifiers.
+IPv4-mapped IPv6 endpoints are normalized to IPv4.
+
+Returns each overlapping stored network once, even if that network overlaps
+several CIDRs used to cover the range. A returned network can extend beyond the
+endpoints. Results represent records, not individual addresses. Only the range
+is scanned. Counts, cancellation, iterator limits, and token recovery follow
+`lookup_network`. Repeat the endpoints on every page. A range cursor cannot be
+used for a CIDR query or another range.
+
+### Field selection and custom records
+
+`lookup_ip`, `lookup_ips`, `lookup_network`, and `lookup_range` accept optional `fields`, with up
+to 64 paths. Omit `fields` or use `[]` to return full records. Selected data is
+an object keyed by the requested paths. Missing paths are omitted. For example,
+`["country.iso_code"]` returns `{"country.iso_code":"US"}` in `data`.
+Filters run against the full record before field selection. Repeat `fields` on
+each page. Selection can change between pages without changing the query cursor.
+
+Custom records can be objects, arrays, or scalar values. Field paths use dots
+between map keys and zero-based array indexes, such as `subdivisions.0.iso_code`.
+Use `$` to select or filter the whole record, including scalar records. Paths
+cannot address a map key containing a dot or a literal root key named `$`.
+Missing paths do not satisfy `exists`. A lookup with no matching record still
+returns `found: false` and `data: null`, regardless of field selection.
+
 ### Filters
 
 Fields use dot notation, such as `country.iso_code`. Operators and aliases use lowercase:
@@ -245,6 +284,71 @@ Numeric equality and ordering compare decoded MMDB integers and JSON numbers wit
 
 Accepts no arguments. Returns `databases`, sorted by filename. Each entry contains `name`, `type`, `description`, `last_updated`, and file `size` in bytes. Type, English description, and build time come from MMDB metadata. `last_updated` is the build time, not the file's modification time.
 
+### `compare_databases`
+
+Requires `old_database`, `new_database`, and `network`. Use an IPv4 /8 or smaller
+network, or a native IPv6 /32 or smaller network. Optional `max_results` ranges
+from 1 to 1000 and defaults to 100.
+
+Returns `changes` with inclusive `start_ip` and `end_ip`, `change` (`added`,
+`removed`, or `changed`), `before`, `after`, and corresponding `before_found` and
+`after_found` flags. Equal JSON answers remain unchanged when stored network
+boundaries or integer encodings differ. Ranges are clipped to the query.
+
+Each call compares at most 10,000 address segments. Continue with the same
+database names and network and the returned `resume_token` until `has_more` is
+false. A page can contain no changes and still have more addresses to compare.
+Page size can change. Reloading either database or restarting the server
+invalidates the token. Cancellation returns an error without advancing a token.
+Clients can request progress with `_meta.progressToken`.
+
+### `summarize_network`
+
+Requires `database`, `network`, and `group_by`. Supports `filters` and
+`filter_mode`. Use an IPv4 /8 or smaller network, or a native IPv6 /32 or smaller
+network. `group_by` uses the same paths as field selection and must select a
+scalar value. Missing fields form a group with `missing: true`.
+
+Each group has `value`, `missing`, `records`, and `addresses`. Record counts
+count stored network records. Address counts include only addresses inside the
+query, with IPv4 aliases skipped even when a query starts inside an alias.
+Independent IPv6 records in custom databases are retained. Counts can differ when equal answers are stored
+in networks of different sizes. Address counts are decimal strings to preserve
+IPv6 precision. `total_addresses` is the size of the query. `matched_addresses`
+is the coverage of matching records. Uncovered addresses do not form a group.
+
+Summaries scan at most 10,000 records and return at most 100 groups. Group values
+are limited to 1024 JSON bytes. Exceeding a limit returns an error, not partial
+totals. Use a smaller network or select another field. Filters can reduce groups
+but do not reduce the records scanned. Scans support cancellation and progress.
+
+### `inspect_database`
+
+Requires `database`. Optional `sample_size` ranges from 1 to 1000 and defaults
+to 100. Returns all standard MMDB metadata and observed field paths, types, and
+scalar examples. Field paths follow the same rules as filters and field selection.
+The sample visits records in database order, so it is not statistically representative.
+`schema_complete` is always false. Absence from a sample does not prove a field is absent.
+
+Inspection returns at most 256 paths and visits at most 10,000 values to a depth
+of 16. `fields_truncated` reports these limits or keys that field paths cannot
+address. String examples are limited to 128 characters. Arrays and objects have
+type information and child paths instead of complete example values.
+
+### `verify_database`
+
+Requires `database`. Runs the reader library's integrity checks on that loaded
+reader and returns `valid: true` when they pass. Failures return
+`verification_failed` with MCP `isError: true`. Downloaded databases continue to
+be verified before installation.
+
+Verification scans the full database and can take time. Only one tool request
+verifies at a time. Cancellation can stop a queued request. The reader's `Verify`
+method cannot stop once started, so the handler waits for it to finish. A successful
+result reports `completed_after_cancellation` if cancellation was requested.
+Failure messages also identify this case. Clients may discard results after
+cancellation. The server still waits for verification to release its slot.
+
 ### `update_databases`
 
 Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Returns a `results` array with per-edition `database`, `updated`, `last_update`, and optional `size` or `error`. Any failed edition makes the tool result an MCP error while preserving all edition results.
@@ -259,7 +363,7 @@ For `2026-07-28` clients, `server/discover` and `tools/list` advertise a five-mi
 
 Initialization and discovery include instructions for choosing databases, filtering, pagination, and error recovery. Tools also provide readable display titles. Their names and arguments are unchanged.
 
-Clients can request progress for `lookup_network` and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
+Clients can request progress for network and range lookups, comparisons, summaries, verification, and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
 
 Stdio integration tests cover legacy initialization for `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`, plus `2026-07-28` discovery and direct requests. They verify response metadata, invalid metadata, unsupported versions, progress, and cancellation of an active download. Protocol negotiation and transport behavior are provided by `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
 

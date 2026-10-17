@@ -19,25 +19,32 @@ import (
 	"github.com/oschwald/maxminddb-mcp/internal/config"
 	"github.com/oschwald/maxminddb-mcp/internal/database"
 	"github.com/oschwald/maxminddb-mcp/internal/filter"
+	"github.com/oschwald/maxminddb-mcp/internal/iprange"
 	"github.com/oschwald/maxminddb-mcp/internal/iterator"
 )
 
 // Server wraps the MCP server with our application state.
 type Server struct {
-	mcp       *server.MCPServer
-	config    *config.Config
-	dbManager *database.Manager
-	updater   *database.Updater
-	iterMgr   *iterator.Manager
+	mcp              *server.MCPServer
+	config           *config.Config
+	dbManager        *database.Manager
+	updater          *database.Updater
+	iterMgr          *iterator.Manager
+	verificationGate chan struct{}
 }
 
 const serverInstructions = `Query local GeoIP2, GeoLite2, and custom MMDB databases.
 Call list_databases first and use its exact filenames when selecting a database.
-Use lookup_ip for an address. Use lookup_network for stored records overlapping a CIDR range.
+Use lookup_ip for an address or lookup_ips for up to 100 addresses. Use fields to reduce returned data.
+Use lookup_network for stored records overlapping a CIDR, or lookup_range for inclusive start_ip and end_ip.
+Use inspect_database for metadata and sampled field paths. The sample is not a complete schema.
+Use compare_databases for changed answers in a bounded CIDR and summarize_network for grouped counts.
+Continue comparisons with the same database names and network plus the latest resume_token.
+Use verify_database for integrity checks. Verification cannot stop once it starts.
 For network queries, specify database when more than one is loaded. Field names depend on the database.
 Example ASN filter: {"field":"autonomous_system_number","operator":"equals","value":13335}.
-Continue pages with the same network and database, the returned iterator_id, and the latest resume_token.
-Omit filters and filter_mode to keep the original query. Stop when has_more is false.
+Continue lookup pages with the same network or endpoints and database, the returned iterator_id, and latest resume_token.
+Omit filters and filter_mode to keep the original query. Repeat fields on each page. Stop when has_more is false.
 On iterator_expired, resume with the latest token. If the database build changed, start a new query.
 On iterator_limit, continue an existing iterator or wait for idle queries to expire.
 If no_databases is returned, check server logs for loading or download status.
@@ -72,11 +79,12 @@ func New(
 	)
 
 	s := &Server{
-		mcp:       mcpServer,
-		config:    cfg,
-		dbManager: dbManager,
-		updater:   updater,
-		iterMgr:   iterMgr,
+		mcp:              mcpServer,
+		config:           cfg,
+		dbManager:        dbManager,
+		updater:          updater,
+		iterMgr:          iterMgr,
+		verificationGate: make(chan struct{}, 1),
 	}
 
 	s.registerTools()
@@ -101,78 +109,31 @@ func (s *Server) registerTools() {
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithRawOutputSchema([]byte(ipOutputSchema)),
 		mcp.WithString("ip", mcp.Required(), mcp.Description("IP address to lookup")),
+		fieldsOption(),
 		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
 	)
 	s.mcp.AddTool(lookupIPTool, s.handleLookupIP)
+	s.registerBatchTool()
+	s.registerInspectionTool()
+	s.registerComparisonTool()
+	s.registerSummaryTool()
+	s.registerVerificationTool()
 
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(
-		"lookup_network",
-		mcp.WithToolTitle("Query a network"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithIdempotentHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-		mcp.WithRawOutputSchema([]byte(networkOutputSchema)),
-		mcp.WithDescription(
-			"Query a CIDR range with optional filters. filters must be an array of objects with keys: field, operator, value. Example: {\"field\":\"traits.user_type\",\"operator\":\"equals\",\"value\":\"residential\"}. Supported operators: equals, not_equals, in, not_in, contains, regex, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists.",
-		),
-		mcp.WithString(
-			"network",
-			mcp.Required(),
-			mcp.Description("CIDR network to scan (e.g., '192.168.1.0/24')"),
-		),
-		mcp.WithString(
-			"database",
-			mcp.Description(
-				"Database name from list_databases; required when more than one is loaded",
+		"lookup_network", append([]mcp.ToolOption{
+			mcp.WithToolTitle("Query a network"),
+			mcp.WithDescription(
+				"Query a CIDR range with optional filters. filters must be an array of objects with keys: field, operator, value. Example: {\"field\":\"traits.user_type\",\"operator\":\"equals\",\"value\":\"residential\"}. Supported operators: equals, not_equals, in, not_in, contains, regex, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists.",
 			),
-		),
-		mcp.WithArray(
-			"filters",
-			mcp.Description(
-				"Filters for a new query; omit to keep filters when continuing a query",
+			mcp.WithString(
+				"network",
+				mcp.Required(),
+				mcp.Description("CIDR network to scan (e.g., '192.168.1.0/24')"),
 			),
-			mcp.Items(map[string]any{
-				"type": "object", "additionalProperties": false,
-				"required": []string{"field", "operator", "value"},
-				"properties": map[string]any{
-					"field": map[string]any{"type": "string", "minLength": 1},
-					"operator": map[string]any{
-						"type": "string",
-						"enum": append(
-							filter.SupportedOperators(),
-							"eq",
-							"ne",
-							"gt",
-							"lt",
-							"gte",
-							"lte",
-						),
-					},
-					"value": map[string]any{},
-				},
-			}),
-		),
-		mcp.WithString(
-			"filter_mode",
-			mcp.Enum(
-				"and",
-				"or",
-			),
-			mcp.Description("How to combine filters: 'and' or 'or' (default: 'and')"),
-		),
-		mcp.WithInteger(
-			"max_results",
-			mcp.Min(1),
-			mcp.Max(iterator.MaxResults),
-			mcp.DefaultNumber(iterator.MaxResults),
-			mcp.Description("Page size from 1 to 1000"),
-		),
-		mcp.WithString("iterator_id", mcp.Description("Resume existing iterator (fast path)")),
-		mcp.WithString("resume_token", mcp.Description("Fallback token if iterator expired")),
-	)
+		}, networkOptions()...)...)
 	s.mcp.AddTool(lookupNetworkTool, s.handleLookupNetwork)
+	s.registerRangeTool()
 
 	// list_databases tool
 	listDBTool := mcp.NewTool("list_databases",
@@ -210,7 +171,7 @@ func (s *Server) registerTools() {
 
 // handleLookupIP handles the lookup_ip tool.
 func (s *Server) handleLookupIP(
-	_ context.Context,
+	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	ipStr, err := request.RequireString("ip")
@@ -218,7 +179,17 @@ func (s *Server) handleLookupIP(
 		//nolint:nilerr // MCP protocol expects error result, not Go error
 		return toolError("missing_parameter", "Missing required parameter: ip"), nil
 	}
+	if err := ctx.Err(); err != nil {
+		return toolError("canceled", err.Error()), nil
+	}
+	fields, err := parseFields(request)
+	if err != nil {
+		return toolError("invalid_fields", err.Error()), nil
+	}
+	return s.lookupIP(ipStr, request.GetString("database", ""), fields)
+}
 
+func (s *Server) lookupIP(ipStr, dbName string, fields []string) (*mcp.CallToolResult, error) {
 	// Parse IP address
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
@@ -226,15 +197,12 @@ func (s *Server) handleLookupIP(
 		return toolError("invalid_ip", "Invalid IP address: "+ipStr), nil
 	}
 
-	// Get database name if specified
-	dbName := request.GetString("database", "")
-
 	// Perform lookup
 	if dbName != "" {
-		return s.lookupIPInSingleDatabase(ip, ipStr, dbName)
+		return s.lookupIPInSingleDatabase(ip, ipStr, dbName, fields)
 	}
 
-	return s.lookupIPInAllDatabases(ip, ipStr)
+	return s.lookupIPInAllDatabases(ip, ipStr, fields)
 }
 
 // handleLookupNetwork handles the lookup_network tool.
@@ -255,6 +223,19 @@ func (s *Server) handleLookupNetwork(
 		return toolError("invalid_network", "Invalid network: "+networkStr), nil
 	}
 
+	return s.lookupNetworks(ctx, request, network, iprange.Range{})
+}
+
+func (s *Server) lookupNetworks(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	network netip.Prefix,
+	bounds iprange.Range,
+) (*mcp.CallToolResult, error) {
+	fields, err := parseFields(request)
+	if err != nil {
+		return toolError("invalid_fields", err.Error()), nil
+	}
 	args := request.GetArguments()
 	maxResults := float64(iterator.MaxResults)
 	if value, exists := args["max_results"]; exists {
@@ -327,6 +308,8 @@ func (s *Server) handleLookupNetwork(
 		if resumeToken != "" {
 			errorCode = "resume_failed"
 			iter, err = s.iterMgr.ResumeIterator(reader, dbName, resumeToken)
+		} else if bounds.Start.IsValid() {
+			iter, err = s.iterMgr.CreateRangeIterator(reader, dbName, bounds, filters, filterMode)
 		} else {
 			iter, err = s.iterMgr.CreateIterator(reader, dbName, network, filters, filterMode)
 		}
@@ -340,7 +323,8 @@ func (s *Server) handleLookupNetwork(
 	}
 	_, hasFilters := args["filters"]
 	_, hasMode := args["filter_mode"]
-	if iter.Network != network.Masked() || (dbName != "" && iter.Database != dbName) ||
+	if iter.Range != bounds || iter.Network != network.Masked() ||
+		(dbName != "" && iter.Database != dbName) ||
 		(hasFilters && (len(filters) != 0 || len(iter.Filters) != 0) && !reflect.DeepEqual(filters, iter.Filters)) ||
 		(hasMode && filterMode != iter.FilterMode) {
 		if created {
@@ -348,7 +332,7 @@ func (s *Server) handleLookupNetwork(
 		}
 		return toolError(
 			"query_mismatch",
-			"Continuation parameters must match the original network, database, filters, and filter_mode",
+			"Continuation parameters must match the original network or range, database, filters, and filter_mode",
 		), nil
 	}
 
@@ -361,6 +345,9 @@ func (s *Server) handleLookupNetwork(
 		return toolError("iteration_failed", fmt.Sprintf("Iteration failed: %v", err)), nil
 	}
 
+	for i := range result.Results {
+		result.Results[i].Data = selectFields(result.Results[i].Data, fields)
+	}
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
@@ -409,13 +396,14 @@ func (s *Server) handleUpdateDatabases(
 func (s *Server) lookupIPInSingleDatabase(
 	ip netip.Addr,
 	ipStr, dbName string,
+	fields []string,
 ) (*mcp.CallToolResult, error) {
 	reader, exists := s.dbManager.GetReader(dbName)
 	if !exists {
 		return toolError("db_not_found", "Database not found: "+dbName), nil
 	}
 
-	var record map[string]any
+	var record any
 	lookup := reader.Lookup(ip)
 	if err := lookup.Decode(&record); err != nil {
 		return toolError("lookup_failed", fmt.Sprintf("Lookup failed: %v", err)), nil
@@ -428,12 +416,17 @@ func (s *Server) lookupIPInSingleDatabase(
 
 	if lookup.Found() {
 		result["network"] = lookup.Prefix().String()
+		result["data"] = selectFields(record, fields)
 	}
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
 // lookupIPInAllDatabases performs IP lookup across all databases.
-func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallToolResult, error) {
+func (s *Server) lookupIPInAllDatabases(
+	ip netip.Addr,
+	ipStr string,
+	fields []string,
+) (*mcp.CallToolResult, error) {
 	results := make(map[string]any)
 	databases := s.dbManager.ListDatabases()
 
@@ -443,7 +436,7 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 			continue
 		}
 
-		var record map[string]any
+		var record any
 		lookup := reader.Lookup(ip)
 		if err := lookup.Decode(&record); err != nil {
 			return toolError(
@@ -457,6 +450,7 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 		}
 		if lookup.Found() {
 			dbResult["network"] = lookup.Prefix().String()
+			dbResult["data"] = selectFields(record, fields)
 		}
 
 		results[dbInfo.Name] = dbResult

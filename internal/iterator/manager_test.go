@@ -231,15 +231,20 @@ func TestResumeValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutate := range map[string]func(*ResumeToken){
-		"version":    func(token *ResumeToken) { token.Version = 0 },
-		"database":   func(token *ResumeToken) { token.Database = "other" },
-		"generation": func(token *ResumeToken) { token.BuildEpoch++ },
-		"type":       func(token *ResumeToken) { token.DatabaseType = "other" },
-		"network":    func(token *ResumeToken) { token.Network = "invalid" },
-		"position":   func(token *ResumeToken) { token.LastNetwork = "8.8.8.0/24" },
-		"counter":    func(token *ResumeToken) { token.Processed = -1 },
-		"matched":    func(token *ResumeToken) { token.Matched = token.Processed + 1 },
-		"mode":       func(token *ResumeToken) { token.FilterMode = "typo" },
+		"version":               func(token *ResumeToken) { token.Version = 0 },
+		"database":              func(token *ResumeToken) { token.Database = "other" },
+		"generation":            func(token *ResumeToken) { token.BuildEpoch++ },
+		"type":                  func(token *ResumeToken) { token.DatabaseType = "other" },
+		"network":               func(token *ResumeToken) { token.Network = "invalid" },
+		"position":              func(token *ResumeToken) { token.LastNetwork = "8.8.8.0/24" },
+		"counter":               func(token *ResumeToken) { token.Processed = -1 },
+		"matched":               func(token *ResumeToken) { token.Matched = token.Processed + 1 },
+		"mode":                  func(token *ResumeToken) { token.FilterMode = "typo" },
+		"missing range end":     func(token *ResumeToken) { token.StartIP = "1.0.0.1" },
+		"invalid range start":   func(token *ResumeToken) { token.StartIP, token.EndIP = "bad", "1.0.0.2" },
+		"reversed range":        func(token *ResumeToken) { token.StartIP, token.EndIP = "1.0.0.2", "1.0.0.1" },
+		"mixed range":           func(token *ResumeToken) { token.StartIP, token.EndIP = "1.0.0.1", "::1" },
+		"different range cover": func(token *ResumeToken) { token.StartIP, token.EndIP = "2.0.0.0", "2.255.255.255" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			token := *original

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/oschwald/maxminddb-mcp/internal/record"
 )
 
 func TestFilterEngine(t *testing.T) {
@@ -386,7 +388,7 @@ func TestGetNestedField(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.field, func(t *testing.T) {
-			result := getNestedField(data, strings.Split(test.field, "."))
+			result, _ := record.Lookup(data, strings.Split(test.field, "."))
 			if !compareEqual(result, test.expected) {
 				t.Errorf("Expected %v, got %v", test.expected, result)
 			}

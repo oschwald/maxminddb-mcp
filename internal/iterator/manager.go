@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/oschwald/maxminddb-mcp/internal/filter"
+	"github.com/oschwald/maxminddb-mcp/internal/iprange"
 
 	"github.com/oschwald/maxminddb-golang/v2"
 )
@@ -41,6 +42,7 @@ type ManagedIterator struct {
 	pending      *NetworkResult
 	stop         func()
 	busy         chan struct{}
+	Range        iprange.Range
 	Network      netip.Prefix
 	LastNetwork  netip.Prefix
 	ID           string
@@ -60,6 +62,8 @@ type ResumeToken struct {
 	Database     string          `json:"database"`
 	Network      string          `json:"network"`
 	FilterMode   string          `json:"filter_mode"`
+	StartIP      string          `json:"start_ip,omitempty"`
+	EndIP        string          `json:"end_ip,omitempty"`
 	Filters      []filter.Filter `json:"filters"`
 	Version      int             `json:"version"`
 	BuildEpoch   uint            `json:"build_epoch"`
@@ -70,8 +74,8 @@ type ResumeToken struct {
 
 // NetworkResult represents a single network result.
 type NetworkResult struct {
-	Data    map[string]any `json:"data"`
-	Network netip.Prefix   `json:"network"`
+	Data    any          `json:"data"`
+	Network netip.Prefix `json:"network"`
 }
 
 // IterationResult contains the results of an iteration batch.
@@ -150,6 +154,26 @@ func (m *Manager) CreateIterator(
 	return m.registerIterator(iterator)
 }
 
+// CreateRangeIterator creates a query for records overlapping an inclusive range.
+func (m *Manager) CreateRangeIterator(
+	reader *maxminddb.Reader,
+	database string,
+	bounds iprange.Range,
+	filters []filter.Filter,
+	filterMode string,
+) (*ManagedIterator, error) {
+	bounds, err := iprange.New(bounds.Start, bounds.End)
+	if err != nil {
+		return nil, err
+	}
+	iterator, err := m.newIterator(reader, database, bounds.Cover(), filters, filterMode)
+	if err != nil {
+		return nil, err
+	}
+	iterator.Range = bounds
+	return m.registerIterator(iterator)
+}
+
 // ResumeIterator creates a new iterator from a resume token.
 func (m *Manager) ResumeIterator(
 	reader *maxminddb.Reader,
@@ -169,11 +193,29 @@ func (m *Manager) ResumeIterator(
 	if err != nil {
 		return nil, fmt.Errorf("invalid network in resume token: %w", err)
 	}
+	var bounds iprange.Range
+	if resume.StartIP != "" || resume.EndIP != "" {
+		start, startErr := netip.ParseAddr(resume.StartIP)
+		end, endErr := netip.ParseAddr(resume.EndIP)
+		bounds, err = iprange.New(start, end)
+		if startErr != nil || endErr != nil || err != nil || bounds.Cover() != network.Masked() {
+			return nil, errors.New("invalid address range in resume token")
+		}
+	}
 	var last netip.Prefix
 	if resume.LastNetwork != "" {
 		last, err = netip.ParsePrefix(resume.LastNetwork)
-		if err != nil || last != last.Masked() || !last.Overlaps(network) {
+		if err != nil || last != last.Masked() {
 			return nil, errors.New("invalid last network in resume token")
+		}
+		query := bounds
+		if !query.Start.IsValid() {
+			query = iprange.FromPrefix(network)
+		}
+		span, ok := iprange.ForPrefix(last, query.Start.Is4())
+		_, overlaps := span.Intersect(query)
+		if !ok || !overlaps {
+			return nil, errors.New("last network is outside the query in resume token")
 		}
 	}
 	if resume.Processed < 0 || resume.Matched < 0 || resume.Matched > resume.Processed ||
@@ -186,6 +228,7 @@ func (m *Manager) ResumeIterator(
 	}
 	iterator.Processed, iterator.Matched = resume.Processed, resume.Matched
 	iterator.LastNetwork, iterator.exhausted = last, resume.Exhausted
+	iterator.Range = bounds
 	return m.registerIterator(iterator)
 }
 
@@ -262,7 +305,7 @@ func (m *Manager) Iterate(
 		report("Scanning " + iterator.Network.String())
 	}
 	if iterator.next == nil && !iterator.exhausted {
-		iterator.next, iterator.stop = iter.Pull(iterator.Reader.NetworksWithin(iterator.Network))
+		iterator.next, iterator.stop = iter.Pull(iterator.networks())
 		if iterator.LastNetwork.IsValid() {
 			found := false
 			var scanned int64
@@ -300,7 +343,7 @@ func (m *Manager) Iterate(
 				iterator.resetCursor()
 				break
 			}
-			var data map[string]any
+			var data any
 			if err := result.Decode(&data); err != nil {
 				return nil, fmt.Errorf("decode network: %w", err)
 			}
@@ -343,6 +386,31 @@ func (m *Manager) Iterate(
 		TotalProcessed: iterator.Processed,
 		TotalMatched:   iterator.Matched,
 	}, nil
+}
+
+func (iterator *ManagedIterator) networks() iter.Seq[maxminddb.Result] {
+	if !iterator.Range.Start.IsValid() {
+		return iterator.Reader.NetworksWithin(iterator.Network)
+	}
+	return func(yield func(maxminddb.Result) bool) {
+		var previous netip.Prefix
+		for _, prefix := range iterator.Range.Prefixes() {
+			for entry := range iterator.Reader.NetworksWithin(prefix) {
+				if entry.Err() != nil {
+					yield(entry)
+					return
+				}
+				// A stored network can contain several of the query's covering CIDRs.
+				if entry.Prefix() == previous {
+					continue
+				}
+				previous = entry.Prefix()
+				if !yield(entry) {
+					return
+				}
+			}
+		}
+	}
 }
 
 func (iterator *ManagedIterator) resetCursor() {
@@ -407,6 +475,9 @@ func (*Manager) generateResumeToken(iterator *ManagedIterator) (string, error) {
 
 	if lastNetwork.IsValid() {
 		token.LastNetwork = lastNetwork.String()
+	}
+	if iterator.Range.Start.IsValid() {
+		token.StartIP, token.EndIP = iterator.Range.Start.String(), iterator.Range.End.String()
 	}
 
 	data, err := json.Marshal(token)

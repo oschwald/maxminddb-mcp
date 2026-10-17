@@ -2,6 +2,7 @@
 package database
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,6 +23,7 @@ import (
 
 // Info holds metadata about a database.
 type Info struct {
+	Generation  string    `json:"-"`
 	LastUpdated time.Time `json:"last_updated"`
 	fileInfo    os.FileInfo
 	Name        string `json:"name"`
@@ -176,16 +178,22 @@ func (m *Manager) StartWatching() {
 
 // GetReader returns a reader for the specified database by display name.
 func (m *Manager) GetReader(name string) (*maxminddb.Reader, bool) {
+	reader, _, ok := m.Snapshot(name)
+	return reader, ok
+}
+
+// Snapshot returns a reader and its generation under the same lock.
+func (m *Manager) Snapshot(name string) (*maxminddb.Reader, string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	// Fast O(1) lookup using display name to path map
 	path, exists := m.displayToPath[name]
 	if !exists {
-		return nil, false
+		return nil, "", false
 	}
 	reader, exists := m.readers[path]
-	return reader, exists
+	return reader, m.databases[path].Generation, exists
 }
 
 // GetDatabase returns database info for the specified database by display name.
@@ -298,6 +306,7 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 	}
 
 	dbInfo := &Info{
+		Generation:  rand.Text(),
 		fileInfo:    fileInfo,
 		Name:        name, // Display name remains the base filename
 		Type:        reader.Metadata.DatabaseType,

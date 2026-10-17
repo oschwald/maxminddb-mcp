@@ -9,20 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Compare database answers within a bounded CIDR, with paginated changes, progress, cancellation, and tokens bound to loaded database generations.
+- Query inclusive start/end IP ranges with filters, field selection, and resumable pages, without duplicate network records.
+- Verify loaded databases on demand, with serialized execution and explicit cancellation behavior.
+- Summarize matching records by a scalar field, with exact address coverage and bounded scans.
+- Inspect full database metadata and bounded samples of field paths, types, and examples with `inspect_database`.
+- Select fields from IP, batch, and network lookup results. Support scalar and array records, root-value filters, and array indexes in field paths.
+- Add `lookup_ips` for bounded batches with ordered per-address results and errors.
 - Advertise five-minute private caching for MCP discovery and tool definitions.
-
 - Publish server usage instructions through initialization and discovery, and add readable tool titles.
-
 - Report optional, throttled MCP progress for database downloads and network scans, including token cursor restoration.
 
 ### Changed
 
 - Avoid rational-number allocations when comparing integers of the same signedness or finite floating-point values. Preserve exact comparisons for mixed numeric types.
-
 - Test all five supported MCP revisions, modern request metadata, protocol errors, and stdio cancellation reaching active downloads.
-
 - Limit retained iterators to 128 per server. Existing iterators can continue when new queries and token resumes reach the limit.
-
 - Require Go 1.26 and build with Go 1.27.2. Update mcp-go to 1.3.0, maxminddb-golang/v2 to 2.8.0, geoipupdate to v8, fsnotify, go-toml, and indirect dependencies.
 - Update the fixture submodule to an upstream revision using a pinned `mmdbwriter/v2` prerelease. This dependency is used only by the fixture generator.
 - Validate MCP input and output schemas. Add tool annotations and use the build's version in server metadata.
@@ -38,16 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Exclude IPv4 alias subtrees from summary coverage when a query starts below the alias root. Preserve independent IPv6 records in custom databases.
 - Allow slow downloads and update lock waits to finish without a fixed total deadline. Caller cancellation and shutdown still interrupt network operations and lock waits.
-
 - Release newly created iterators when their first page fails or is canceled. Reclaim expired iterators before admitting new queries.
-
 - Return `no_databases` from IP lookups when no database is available, consistent with network lookups.
-
 - Reuse readers for unchanged files while still loading replaced files and recovering unloaded databases.
-
 - Coordinate database updates across server processes with cancellable per-edition file locks.
-
 - Check for database updates at startup when automatic updates are enabled, including missing configured editions.
 - Let queued updates and pages cancel promptly. Keep busy iterators from blocking unrelated queries.
 - Reject unknown TOML settings and report their names without printing values.

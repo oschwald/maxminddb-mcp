@@ -115,17 +115,23 @@ func TestStdioProtocol(t *testing.T) {
 			}
 			listed := call("tools/list", map[string]any{})
 			tools := listed["tools"].([]any)
-			if len(tools) != 3 {
-				t.Fatalf("got %d tools, want 3", len(tools))
+			if len(tools) != 9 {
+				t.Fatalf("got %d tools, want 9", len(tools))
 			}
 			var names []string
 			for _, item := range tools {
 				tool := item.(map[string]any)
 				names = append(names, tool["name"].(string))
 				titles := map[string]string{
-					"lookup_ip":      "Look up an IP address",
-					"lookup_network": "Query a network",
-					"list_databases": "List databases",
+					"lookup_ip":         "Look up an IP address",
+					"compare_databases": "Compare databases",
+					"summarize_network": "Summarize a network",
+					"verify_database":   "Verify a database",
+					"inspect_database":  "Inspect a database",
+					"lookup_ips":        "Look up IP addresses",
+					"lookup_range":      "Query an address range",
+					"lookup_network":    "Query a network",
+					"list_databases":    "List databases",
 				}
 				if tool["title"] != titles[tool["name"].(string)] {
 					t.Fatalf("incorrect display title: %v", tool)
@@ -145,6 +151,31 @@ func TestStdioProtocol(t *testing.T) {
 				t.Helper()
 				return call("tools/call", map[string]any{"name": name, "arguments": arguments})
 			}
+			batch := wireContent(
+				t,
+				toolCall("lookup_ips", map[string]any{"ips": []string{"1.0.0.1", "127.0.0.1"}}),
+			)
+			if len(batch["results"].([]any)) != 2 {
+				t.Fatalf("invalid batch response: %v", batch)
+			}
+			for _, check := range []struct {
+				name      string
+				arguments map[string]any
+				field     string
+				want      any
+			}{
+				{"inspect_database", map[string]any{"database": "GeoLite2-ASN-Test.mmdb", "sample_size": 1}, "schema_complete", false},
+				{"compare_databases", map[string]any{"old_database": "GeoLite2-ASN-Test.mmdb", "new_database": "GeoLite2-ASN-Test.mmdb", "network": "1.0.0.0/24"}, "has_more", false},
+				{"summarize_network", map[string]any{"database": "GeoLite2-ASN-Test.mmdb", "network": "1.0.0.0/24", "group_by": "autonomous_system_number"}, "total_addresses", "256"},
+				{"verify_database", map[string]any{"database": "GeoLite2-ASN-Test.mmdb"}, "valid", true},
+				{"lookup_range", map[string]any{"start_ip": "1.0.0.1", "end_ip": "1.0.0.2"}, "total_matched", float64(1)},
+			} {
+				payload := wireContent(t, toolCall(check.name, check.arguments))
+				if payload[check.field] != check.want {
+					t.Fatalf("%s: %v", check.name, payload)
+				}
+			}
+
 			invalid := toolCall(
 				"lookup_network",
 				map[string]any{"network": "1.0.0.0/8", "max_results": -1},

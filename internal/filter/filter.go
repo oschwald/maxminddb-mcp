@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/oschwald/maxminddb-mcp/internal/record"
 )
 
 // Filter represents a single filter condition.
@@ -78,7 +80,7 @@ func New(filters []Filter, mode Mode) *Engine {
 }
 
 // Matches evaluates all filters against the given data.
-func (e *Engine) Matches(data map[string]any) bool {
+func (e *Engine) Matches(data any) bool {
 	if len(e.filters) == 0 {
 		return true // No filters means everything matches
 	}
@@ -104,8 +106,8 @@ func (e *Engine) Matches(data map[string]any) bool {
 }
 
 // evaluateFilter evaluates a single filter against the data.
-func (*Engine) evaluateFilter(filter preparedFilter, data map[string]any) bool {
-	fieldValue := getNestedField(data, filter.path)
+func (*Engine) evaluateFilter(filter preparedFilter, data any) bool {
+	fieldValue, _ := record.Lookup(data, filter.path)
 
 	switch filter.Operator {
 	case "equals":
@@ -138,36 +140,6 @@ func (*Engine) evaluateFilter(filter preparedFilter, data map[string]any) bool {
 	default:
 		return false
 	}
-}
-
-// getNestedField retrieves a nested field from a map using dot notation.
-func getNestedField(data map[string]any, parts []string) any {
-	current := data
-
-	for i, part := range parts {
-		if current == nil {
-			return nil
-		}
-
-		value, exists := current[part]
-		if !exists {
-			return nil
-		}
-
-		// If this is the last part, return the value
-		if i == len(parts)-1 {
-			return value
-		}
-
-		// Otherwise, try to continue with nested map
-		nextMap, ok := value.(map[string]any)
-		if !ok {
-			return nil
-		}
-		current = nextMap
-	}
-
-	return nil
 }
 
 // compareEqual compares two values for equality.

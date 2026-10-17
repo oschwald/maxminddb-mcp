@@ -48,6 +48,7 @@ coverage.txt
 
 # Database files (don't commit actual MMDB files)
 *.mmdb
+!internal/mcp/testdata/*.mmdb
 
 # Config files with secrets
 config.toml
