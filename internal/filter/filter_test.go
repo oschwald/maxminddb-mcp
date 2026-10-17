@@ -523,8 +523,17 @@ func TestSupportedOperators(t *testing.T) {
 	operators := SupportedOperators()
 
 	expectedOperators := []string{
-		"equals", "not_equals", "in", "not_in", "contains",
-		"regex", "greater_than", "greater_than_or_equal", "less_than", "less_than_or_equal", "exists",
+		"equals",
+		"not_equals",
+		"in",
+		"not_in",
+		"contains",
+		"regex",
+		"greater_than",
+		"greater_than_or_equal",
+		"less_than",
+		"less_than_or_equal",
+		"exists",
 	}
 
 	if len(operators) != len(expectedOperators) {

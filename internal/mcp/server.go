@@ -486,7 +486,11 @@ func buildFilterHintFromString(s string) string {
 		field := strings.TrimSpace(s[:idx])
 		value := strings.TrimSpace(s[idx+1:])
 		if field != "" && value != "" {
-			return fmt.Sprintf("Did you mean: {\"field\":\"%s\", \"operator\":\"equals\", \"value\":\"%s\"}?", field, value)
+			return fmt.Sprintf(
+				"Did you mean: {\"field\":\"%s\", \"operator\":\"equals\", \"value\":\"%s\"}?",
+				field,
+				value,
+			)
 		}
 	}
 	return "Provide filters as objects: {field, operator, value}"

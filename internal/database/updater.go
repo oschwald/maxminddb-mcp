@@ -126,7 +126,13 @@ func (u *Updater) StartScheduledUpdates(ctx context.Context) {
 							result.Error,
 						)
 					} else if result.Updated {
-						slog.Info("Database updated", "edition", result.Database, "size", result.Size)
+						slog.Info(
+							"Database updated",
+							"edition",
+							result.Database,
+							"size",
+							result.Size,
+						)
 					}
 				}
 			}
