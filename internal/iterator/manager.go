@@ -32,6 +32,7 @@ type ManagedIterator struct {
 	Reader       *maxminddb.Reader
 	pending      *NetworkResult
 	stop         func()
+	busy         chan struct{}
 	Network      netip.Prefix
 	LastNetwork  netip.Prefix
 	ID           string
@@ -40,7 +41,6 @@ type ManagedIterator struct {
 	Filters      []filter.Filter
 	Processed    int64
 	Matched      int64
-	mu           sync.Mutex
 	exhausted    bool
 	closed       bool
 }
@@ -117,12 +117,13 @@ func (m *Manager) StartCleanup() {
 func (m *Manager) StopCleanup() {
 	m.stopOnce.Do(func() { close(m.stopCleanup) })
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, iterator := range m.iterators {
-		iterator.mu.Lock()
+	iterators := m.iterators
+	m.iterators = make(map[string]*ManagedIterator)
+	m.mu.Unlock()
+	for _, iterator := range iterators {
+		iterator.busy <- struct{}{}
 		iterator.close()
-		iterator.mu.Unlock()
-		delete(m.iterators, id)
+		<-iterator.busy
 	}
 }
 
@@ -194,8 +195,13 @@ func (m *Manager) GetIterator(id string) (*ManagedIterator, bool) {
 	if !exists {
 		return nil, false
 	}
-	iterator.mu.Lock()
-	defer iterator.mu.Unlock()
+	select {
+	case iterator.busy <- struct{}{}:
+		defer func() { <-iterator.busy }()
+	default:
+		// A running page is active. Its caller refreshes LastAccess when it finishes.
+		return iterator, true
+	}
 	if time.Since(iterator.LastAccess) > m.ttl {
 		iterator.close()
 		delete(m.iterators, id)
@@ -217,8 +223,12 @@ func (m *Manager) Iterate(
 	if maxResults < 1 || maxResults > MaxResults {
 		return nil, fmt.Errorf("max_results must be between 1 and %d", MaxResults)
 	}
-	iterator.mu.Lock()
-	defer iterator.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case iterator.busy <- struct{}{}:
+	}
+	defer func() { <-iterator.busy }()
 	if iterator.closed {
 		return nil, errors.New("iterator expired; resume with its token or start a new query")
 	}
@@ -319,13 +329,13 @@ func (iterator *ManagedIterator) close() {
 // RemoveIterator removes an iterator.
 func (m *Manager) RemoveIterator(id string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if iterator, ok := m.iterators[id]; ok {
-		iterator.mu.Lock()
+	iterator := m.iterators[id]
+	delete(m.iterators, id)
+	m.mu.Unlock()
+	if iterator != nil {
+		iterator.busy <- struct{}{}
 		iterator.close()
-		iterator.mu.Unlock()
-		delete(m.iterators, id)
+		<-iterator.busy
 	}
 }
 
@@ -336,14 +346,16 @@ func (m *Manager) cleanupExpired() {
 
 	now := time.Now()
 	for id, iterator := range m.iterators {
-		if !iterator.mu.TryLock() {
+		select {
+		case iterator.busy <- struct{}{}:
+		default:
 			continue
 		}
 		if now.Sub(iterator.LastAccess) > m.ttl {
 			iterator.close()
 			delete(m.iterators, id)
 		}
-		iterator.mu.Unlock()
+		<-iterator.busy
 	}
 }
 
@@ -436,6 +448,7 @@ func (*Manager) newIterator(
 
 	iterator := &ManagedIterator{
 		ID:           id,
+		busy:         make(chan struct{}, 1),
 		Reader:       reader,
 		Database:     database,
 		Network:      network,

@@ -233,6 +233,62 @@ func TestConcurrentPages(t *testing.T) {
 	}
 }
 
+func TestBusyIteratorDoesNotBlockOtherQueries(t *testing.T) {
+	manager, iterator, _ := testIterator(t)
+	iterator.busy <- struct{}{}
+	defer func() { <-iterator.busy }()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if current, ok := manager.GetIterator(iterator.ID); !ok || current != iterator {
+			t.Error("busy iterator disappeared")
+		}
+		other, err := manager.CreateIterator(
+			iterator.Reader,
+			iterator.Database,
+			iterator.Network,
+			nil,
+			"",
+		)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if _, err := manager.Iterate(t.Context(), other, 1); err != nil {
+			t.Error(err)
+		}
+		manager.cleanupExpired()
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("busy iterator blocked another query")
+	}
+}
+
+func TestQueuedPageCancellation(t *testing.T) {
+	manager, iterator, _ := testIterator(t)
+	iterator.busy <- struct{}{}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := manager.Iterate(ctx, iterator, 1); done <- err }()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("got %v, want cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("queued page ignored cancellation")
+	}
+	<-iterator.busy
+	page, err := manager.Iterate(t.Context(), iterator, 1)
+	if err != nil || len(page.Results) != 1 || page.TotalMatched != 1 {
+		t.Fatalf("canceled waiter changed the next page: %+v, %v", page, err)
+	}
+}
+
 func TestIteratorExpiry(t *testing.T) {
 	for _, cleanup := range []bool{false, true} {
 		manager, iterator, _ := testIterator(t)

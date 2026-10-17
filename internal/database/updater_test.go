@@ -8,6 +8,7 @@ import (
 	"crypto/md5" //nolint:gosec // The update API uses MD5 for file integrity.
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -195,6 +196,47 @@ func TestDownloadCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("download ignored cancellation")
 	}
+}
+
+func TestQueuedUpdateCancellation(t *testing.T) {
+	started := make(chan struct{})
+	updater := testUpdater(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	active := make(chan struct{})
+	go func() { _, _ = updater.UpdateAll(ctx); close(active) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first update did not start")
+	}
+	for _, all := range []bool{false, true} {
+		queued, stop := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() {
+			if all {
+				_, err := updater.UpdateAll(queued)
+				done <- err
+			} else {
+				_, err := updater.UpdateDatabase(queued, "GeoLite2-ASN")
+				done <- err
+			}
+		}()
+		stop()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("got %v, want cancellation", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("queued update ignored cancellation")
+		}
+	}
+	cancel()
+	<-active
 }
 
 func TestStartupUpdateCheck(t *testing.T) {

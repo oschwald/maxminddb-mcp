@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/maxmind/geoipupdate/v8/client"
@@ -31,10 +30,10 @@ type UpdateResult struct {
 
 // Updater handles downloading and updating MaxMind databases.
 type Updater struct {
-	config  *config.Config
-	client  *client.Client
-	manager *Manager
-	mu      sync.Mutex
+	config   *config.Config
+	client   *client.Client
+	manager  *Manager
+	updating chan struct{}
 }
 
 // NewUpdater creates a new database updater.
@@ -54,9 +53,10 @@ func NewUpdater(cfg *config.Config, manager *Manager) (*Updater, error) {
 	}
 
 	updater := &Updater{
-		config:  cfg,
-		client:  &mclient,
-		manager: manager,
+		updating: make(chan struct{}, 1),
+		config:   cfg,
+		client:   &mclient,
+		manager:  manager,
 	}
 
 	return updater, nil
@@ -64,8 +64,15 @@ func NewUpdater(cfg *config.Config, manager *Manager) (*Updater, error) {
 
 // UpdateAll updates all configured databases.
 func (u *Updater) UpdateAll(ctx context.Context) ([]UpdateResult, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case u.updating <- struct{}{}:
+	}
+	defer func() { <-u.updating }()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	results := make([]UpdateResult, 0, len(u.config.MaxMind.Editions))
 
@@ -79,8 +86,15 @@ func (u *Updater) UpdateAll(ctx context.Context) ([]UpdateResult, error) {
 
 // UpdateDatabase updates a specific database.
 func (u *Updater) UpdateDatabase(ctx context.Context, edition string) (UpdateResult, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return UpdateResult{}, ctx.Err()
+	case u.updating <- struct{}{}:
+	}
+	defer func() { <-u.updating }()
+	if err := ctx.Err(); err != nil {
+		return UpdateResult{}, err
+	}
 
 	result := u.updateDatabase(ctx, edition)
 	return result, nil
