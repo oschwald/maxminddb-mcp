@@ -181,27 +181,17 @@ func BenchmarkNestedFieldAccess(b *testing.B) {
 		"level1.nonexistent.level3",
 	}
 
-	for b.Loop() {
-		for _, field := range fields {
-			// Simulate the nested field access logic
-			getNestedFieldBench(testData, field)
-		}
+	for _, field := range fields {
+		b.Run(field, func(b *testing.B) {
+			engine := filter.New(
+				[]filter.Filter{{Field: field, Operator: "exists", Value: true}},
+				filter.ModeAnd,
+			)
+			for b.Loop() {
+				engine.Matches(testData)
+			}
+		})
 	}
-}
-
-// Simplified version of getNestedField for benchmarking.
-func getNestedFieldBench(data map[string]any, field string) any {
-	if field == "" {
-		return nil
-	}
-
-	// Simple field (no dots)
-	if val, exists := data[field]; exists {
-		return val
-	}
-
-	// For simplicity, just return nil for nested fields in benchmark
-	return nil
 }
 
 // Memory allocation benchmarks.
@@ -217,5 +207,21 @@ func BenchmarkFilterCreation(b *testing.B) {
 
 	for b.Loop() {
 		filter.New(filters, "and")
+	}
+}
+
+func BenchmarkRegexPage(b *testing.B) {
+	filters := []filter.Filter{
+		{Field: "traits.isp", Operator: "regex", Value: "^Comcast.*Communications$"},
+	}
+	record := map[string]any{"traits": map[string]any{"isp": "Comcast Cable Communications"}}
+	b.ReportAllocs()
+	for b.Loop() {
+		engine := filter.New(filters, filter.ModeAnd)
+		for range 1000 {
+			if !engine.Matches(record) {
+				b.Fatal("record did not match")
+			}
+		}
 	}
 }

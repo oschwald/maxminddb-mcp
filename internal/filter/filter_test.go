@@ -3,6 +3,7 @@ package filter
 import (
 	"math"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -385,7 +386,7 @@ func TestGetNestedField(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.field, func(t *testing.T) {
-			result := getNestedField(data, test.field)
+			result := getNestedField(data, strings.Split(test.field, "."))
 			if !compareEqual(result, test.expected) {
 				t.Errorf("Expected %v, got %v", test.expected, result)
 			}

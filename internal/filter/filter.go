@@ -49,7 +49,13 @@ func SupportedOperators() []string {
 // Engine handles filter evaluation.
 type Engine struct {
 	mode    Mode
-	filters []Filter
+	filters []preparedFilter
+}
+
+type preparedFilter struct {
+	Filter
+	pattern *regexp.Regexp
+	path    []string
 }
 
 // New creates a new filter engine.
@@ -57,10 +63,18 @@ func New(filters []Filter, mode Mode) *Engine {
 	if mode == "" {
 		mode = ModeAnd
 	}
-	return &Engine{
-		filters: filters,
-		mode:    mode,
+	prepared := make([]preparedFilter, len(filters))
+	for i, f := range filters {
+		prepared[i] = preparedFilter{Filter: f, path: strings.Split(f.Field, ".")}
+		if f.Operator == "regex" {
+			if expression, ok := f.Value.(string); ok {
+				if pattern, err := regexp.Compile(expression); err == nil {
+					prepared[i].pattern = pattern
+				}
+			}
+		}
 	}
+	return &Engine{filters: prepared, mode: mode}
 }
 
 // Matches evaluates all filters against the given data.
@@ -90,8 +104,8 @@ func (e *Engine) Matches(data map[string]any) bool {
 }
 
 // evaluateFilter evaluates a single filter against the data.
-func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
-	fieldValue := getNestedField(data, filter.Field)
+func (*Engine) evaluateFilter(filter preparedFilter, data map[string]any) bool {
+	fieldValue := getNestedField(data, filter.path)
 
 	switch filter.Operator {
 	case "equals":
@@ -105,7 +119,8 @@ func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
 	case "contains":
 		return containsString(fieldValue, filter.Value)
 	case "regex":
-		return matchesRegex(fieldValue, filter.Value)
+		fieldString, ok := fieldValue.(string)
+		return ok && filter.pattern != nil && filter.pattern.MatchString(fieldString)
 	case "greater_than":
 		return compareGreater(fieldValue, filter.Value)
 	case "greater_than_or_equal":
@@ -126,8 +141,7 @@ func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
 }
 
 // getNestedField retrieves a nested field from a map using dot notation.
-func getNestedField(data map[string]any, fieldPath string) any {
-	parts := strings.Split(fieldPath, ".")
+func getNestedField(data map[string]any, parts []string) any {
 	current := data
 
 	for i, part := range parts {
@@ -208,23 +222,6 @@ func containsString(fieldValue, filterValue any) bool {
 	}
 
 	return strings.Contains(fieldStr, filterStr)
-}
-
-// matchesRegex checks if a string matches a regular expression.
-func matchesRegex(fieldValue, filterValue any) bool {
-	fieldStr, ok1 := fieldValue.(string)
-	regexStr, ok2 := filterValue.(string)
-
-	if !ok1 || !ok2 {
-		return false
-	}
-
-	regex, err := regexp.Compile(regexStr)
-	if err != nil {
-		return false
-	}
-
-	return regex.MatchString(fieldStr)
 }
 
 // compareGreater compares if fieldValue > filterValue.
