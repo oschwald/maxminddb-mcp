@@ -88,6 +88,7 @@ test(
     assert.equal(settings.env.MAXMINDDB_MCP_CONFIG, "");
     const child = spawn(settings.command, settings.args ?? [], {
       cwd: temp,
+      signal: t.signal,
       env: {
         ...process.env,
         MAXMINDDB_MCP_CONFIG: "nonexistent.toml",
