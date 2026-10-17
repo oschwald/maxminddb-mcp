@@ -24,11 +24,12 @@ import (
 
 // Server wraps the MCP server with our application state.
 type Server struct {
-	mcp       *server.MCPServer
-	config    *config.Config
-	dbManager *database.Manager
-	updater   *database.Updater
-	iterMgr   *iterator.Manager
+	mcp              *server.MCPServer
+	config           *config.Config
+	dbManager        *database.Manager
+	updater          *database.Updater
+	iterMgr          *iterator.Manager
+	verificationGate chan struct{}
 }
 
 const serverInstructions = `Query local GeoIP2, GeoLite2, and custom MMDB databases.
@@ -72,11 +73,12 @@ func New(
 	)
 
 	s := &Server{
-		mcp:       mcpServer,
-		config:    cfg,
-		dbManager: dbManager,
-		updater:   updater,
-		iterMgr:   iterMgr,
+		mcp:              mcpServer,
+		config:           cfg,
+		dbManager:        dbManager,
+		updater:          updater,
+		iterMgr:          iterMgr,
+		verificationGate: make(chan struct{}, 1),
 	}
 
 	s.registerTools()
@@ -109,6 +111,7 @@ func (s *Server) registerTools() {
 	s.registerInspectionTool()
 	s.registerComparisonTool()
 	s.registerSummaryTool()
+	s.registerVerificationTool()
 
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(

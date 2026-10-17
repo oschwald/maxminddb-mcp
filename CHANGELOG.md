@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Compare database answers within a bounded CIDR, with paginated changes, progress, cancellation, and tokens bound to loaded database generations.
 
+- Verify loaded databases on demand, with serialized execution and explicit cancellation behavior.
 - Summarize matching records by a scalar field, with exact address coverage and bounded scans.
 - Inspect full database metadata and bounded samples of field paths, types, and examples with `inspect_database`.
 

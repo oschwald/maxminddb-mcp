@@ -115,8 +115,8 @@ func TestStdioProtocol(t *testing.T) {
 			}
 			listed := call("tools/list", map[string]any{})
 			tools := listed["tools"].([]any)
-			if len(tools) != 7 {
-				t.Fatalf("got %d tools, want 7", len(tools))
+			if len(tools) != 8 {
+				t.Fatalf("got %d tools, want 8", len(tools))
 			}
 			var names []string
 			for _, item := range tools {
@@ -126,6 +126,7 @@ func TestStdioProtocol(t *testing.T) {
 					"lookup_ip":         "Look up an IP address",
 					"compare_databases": "Compare databases",
 					"summarize_network": "Summarize a network",
+					"verify_database":   "Verify a database",
 					"inspect_database":  "Inspect a database",
 					"lookup_ips":        "Look up IP addresses",
 					"lookup_network":    "Query a network",

@@ -320,6 +320,20 @@ of 16. `fields_truncated` reports these limits or keys that field paths cannot
 address. String examples are limited to 128 characters. Arrays and objects have
 type information and child paths instead of complete example values.
 
+### `verify_database`
+
+Requires `database`. Runs the reader library's integrity checks on that loaded
+reader and returns `valid: true` when they pass. Failures return
+`verification_failed` with MCP `isError: true`. Downloaded databases continue to
+be verified before installation.
+
+Verification scans the full database and can take time. Only one tool request
+verifies at a time. Cancellation can stop a queued request. The reader's `Verify`
+method cannot stop once started, so the handler waits for it to finish. A successful
+result reports `completed_after_cancellation` if cancellation was requested.
+Failure messages also identify this case. Clients may discard results after
+cancellation. The server still waits for verification to release its slot.
+
 ### `update_databases`
 
 Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Returns a `results` array with per-edition `database`, `updated`, `last_update`, and optional `size` or `error`. Any failed edition makes the tool result an MCP error while preserving all edition results.
