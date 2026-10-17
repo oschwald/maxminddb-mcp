@@ -93,7 +93,7 @@ Keep files containing credentials readable only by their owner, for example with
 
 When no databases are loaded, an initial download starts in the background. MCP requests can run during that download. Until it finishes, `list_databases` returns an empty list with `status: "downloading"`. It also reports download failures and corrective actions. Updates have no fixed total deadline. Downloads and lock waits honor caller cancellation or server shutdown.
 
-When `auto_update` is true, the server checks all configured editions in the background at startup, then on schedule. This also downloads missing editions when other databases are already installed. `update_databases` supports manual updates. Downloads use a unique temporary file and must pass checksum and MMDB validation before replacing the installed file. Missing or changed files are detected from their actual contents. Old `.checksums` files are ignored. Server processes sharing a database directory coordinate updates through per-edition `.mmdb.lock` files. Do not delete these lock files while a server is running. Other update programs must use separate directories or run when these servers are stopped.
+When `auto_update` is true, the server checks configured and API-installed MaxMind editions in the background at startup, then on schedule. This also downloads missing editions when other databases are already installed. `update_databases` supports manual updates. Downloads use a unique temporary file and must pass checksum and MMDB validation before replacing the installed file. Missing or changed files are detected from their actual contents. Old `.checksums` files are ignored. Server processes sharing a database directory coordinate updates through per-edition `.mmdb.lock` files. Do not delete these lock files while a server is running. Other update programs must use separate directories or run when these servers are stopped.
 
 ### Use local MMDB files
 
@@ -135,7 +135,7 @@ The Desktop extension passes these environment settings to the executable. Other
 | `MAXMINDDB_MCP_LICENSE_KEY`      | License key, required for downloads                                                                                                 |
 | `MAXMINDDB_MCP_EDITIONS`         | Comma- or whitespace-separated editions. Defaults to `GeoLite2-City,GeoLite2-ASN`.                                                  |
 
-Setting `MAXMINDDB_MCP_DOWNLOAD_ENABLED` selects this configuration source and skips automatic config-file discovery. Do not also set a nonempty `MAXMINDDB_MCP_CONFIG`. Download mode checks for updates every 24 hours. Local-file mode does not download anything. Use a TOML file for multiple folders or other advanced settings.
+Setting `MAXMINDDB_MCP_DOWNLOAD_ENABLED` selects this configuration source and skips automatic config-file discovery. Do not also set a nonempty `MAXMINDDB_MCP_CONFIG`. Download mode checks for updates every 24 hours. Local-file mode does not run MaxMind downloads, but explicit URL imports through `install_database` are available. Use a TOML file for multiple folders or other advanced settings.
 
 ### Config discovery and defaults
 
@@ -296,7 +296,7 @@ The container has no HTTP port or subprocess healthcheck. Check the running MCP 
 
 ## Tools
 
-Successful results include structured JSON and a JSON text fallback. Tool execution failures set MCP `isError: true`. Schema validation rejects unknown arguments and invalid types. Read tools are annotated as local and read-only. `update_databases` is annotated as a network operation that replaces files.
+Successful results include structured JSON and a JSON text fallback. Tool execution failures set MCP `isError: true`. Schema validation rejects unknown arguments and invalid types. Read tools are annotated as local and read-only. Installation and update tools are annotated as network operations that can replace files.
 
 ### `lookup_ip`
 
@@ -480,7 +480,42 @@ cancellation. The server still waits for verification to release its slot.
 
 ### `update_databases`
 
-Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Returns a `results` array with per-edition `database`, `updated`, `last_update`, and optional `size` or `error`. Any failed edition makes the tool result an MCP error while preserving all edition results.
+Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Updates configured editions and editions added through `install_edition`. Returns a `results` array with per-edition `database`, `updated`, `last_update`, and optional `size` or `error`. Any failed edition makes the tool result an MCP error while preserving all edition results.
+
+### `install_edition`
+
+Download a MaxMind MMDB edition using the configured account credentials, even if that edition is not in the server configuration. The account must have access to the edition. Available in `maxmind` and `geoip_compat` modes.
+
+```json
+{ "edition": "GeoIP2-Anonymous-IP" }
+```
+
+The server validates and loads the database before returning. No restart is needed. An existing file for that edition is updated. The result contains `database` (the edition ID), `updated`, `last_update`, and optional `size` or `error`.
+
+New editions join `update_databases` and the automatic update schedule when `auto_update` is enabled. Empty marker files under `.maxminddb-mcp-editions` in the database folder preserve this selection across restarts. They contain no credentials. The server does not rewrite TOML, `GeoIP.conf`, or extension settings. If update registration fails after installation, the result includes an error and the installed database remains available. To stop updating an edition, stop the server, remove its marker, and remove the edition from configured editions if present. Removing the marker does not delete the MMDB.
+
+The server does not list all editions available to an account. The [metadata API used by geoipupdate](https://github.com/maxmind/geoipupdate/blob/main/client/metadata.go) requires an edition ID. Live checks without an ID and with `edition_id=all` returned `EDITION_ID_REQUIRED` and `EDITION_ID_NOT_FOUND`. Find edition IDs in your MaxMind account's download list.
+
+### `install_database`
+
+Import a database from an HTTP or HTTPS URL in any mode:
+
+```json
+{
+  "url": "https://example.com/network-data.mmdb.gz",
+  "database": "network-data.mmdb"
+}
+```
+
+`database` is a filename, not a path. The server installs into the configured MaxMind download folder, or the first configured folder in directory mode. The folder must be writable. Set `overwrite: true` to replace an existing file. A name already loaded from another folder is rejected.
+
+Supported downloads are raw MMDB, gzip-compressed MMDB, and tar, tar.gz, or ZIP archives containing exactly one regular `.mmdb` file. Archive paths are ignored. Both the download and expanded data are limited to 1 GiB, including HTTP bodies before and after gzip decoding. Archives can contain up to 1,024 entries. ZIP directory counts and offsets are checked before allocating entry metadata. The server verifies the MMDB before replacing an existing database and loads it immediately. Invalid or interrupted downloads leave the existing file intact. Cancellation stops network reads and lock waits. If verification has started, it must finish before cancellation is checked again.
+
+URL imports are one-time downloads. The server does not store the URL or add it to automatic updates. Import again with `overwrite: true` to update it. If the destination name belongs to a configured or API-installed MaxMind edition, the next MaxMind update can replace it.
+
+Requests can reach any HTTP(S) host accessible to the server, including the local network. MaxMind credentials are never attached to URL imports. URL usernames and passwords are rejected. Signed query URLs are accepted, but are not included in server errors or sent as redirect referrers. HTTPS downloads cannot redirect to HTTP.
+
+The result contains `database` (the destination filename), `updated`, `last_update`, and optional `size` or `error`. A failed installation sets MCP `isError: true`. If replacement succeeds but loading fails, `updated` remains true and `error` explains the failure.
 
 ### Errors
 
@@ -492,7 +527,7 @@ For `2026-07-28` clients, `server/discover` and `tools/list` advertise a five-mi
 
 Initialization and discovery include instructions for choosing databases, filtering, pagination, and error recovery. Tools also provide readable display titles. Their names and arguments are unchanged.
 
-Clients can request progress for network and range lookups, comparisons, summaries, verification, and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
+Clients can request progress for network and range lookups, comparisons, summaries, verification, and database installation or updates by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
 
 Stdio integration tests cover legacy initialization for `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`, plus `2026-07-28` discovery and direct requests. They verify response metadata, invalid metadata, unsupported versions, progress, and cancellation of an active download. Protocol negotiation and transport behavior are provided by `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
 
