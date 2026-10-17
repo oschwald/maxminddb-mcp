@@ -10,8 +10,9 @@ import (
 type Range struct{ Start, End netip.Addr }
 
 func New(start, end netip.Addr) (Range, error) {
+	hasZone := start.Zone() != "" || end.Zone() != ""
 	start, end = start.Unmap(), end.Unmap()
-	if !start.IsValid() || !end.IsValid() || start.Zone() != "" || end.Zone() != "" ||
+	if !start.IsValid() || !end.IsValid() || hasZone ||
 		start.BitLen() != end.BitLen() ||
 		start.Compare(end) > 0 {
 		return Range{}, fmt.Errorf(
@@ -78,6 +79,24 @@ func (r Range) Cover() netip.Prefix {
 		}
 	}
 	panic("valid ranges always have a covering prefix")
+}
+
+// Prefixes covers the range with disjoint CIDRs in address order.
+func (r Range) Prefixes() []netip.Prefix {
+	var prefixes []netip.Prefix
+	for start := r.Start; start.IsValid() && start.Compare(r.End) <= 0; {
+		prefix := netip.PrefixFrom(start, start.BitLen())
+		for bits := start.BitLen() - 1; bits >= 0; bits-- {
+			larger := netip.PrefixFrom(start, bits)
+			if larger.Masked().Addr() != start || FromPrefix(larger).End.Compare(r.End) > 0 {
+				break
+			}
+			prefix = larger
+		}
+		prefixes = append(prefixes, prefix)
+		start = FromPrefix(prefix).End.Next()
+	}
+	return prefixes
 }
 
 func (r Range) Size() *big.Int {

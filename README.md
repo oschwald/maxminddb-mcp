@@ -235,9 +235,23 @@ Live iterators retain a cursor. Token resumes scan to the saved position once. R
 
 A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. Each server retains at most 128 iterators, including completed queries until they expire. Expired entries are reclaimed before creating an iterator. At the limit, new queries and token resumes return `iterator_limit`. Continue with an existing `iterator_id` or wait for idle entries to expire. A failed or canceled first page releases its iterator immediately.
 
+### `lookup_range`
+
+Accepts required `start_ip` and `end_ip`, both inclusive, plus the same database,
+filter, field-selection, and pagination arguments as `lookup_network`. Endpoints
+must be ordered addresses of the same family without zone identifiers.
+IPv4-mapped IPv6 endpoints are normalized to IPv4.
+
+Returns each overlapping stored network once, even if that network overlaps
+several CIDRs used to cover the range. A returned network can extend beyond the
+endpoints. Results represent records, not individual addresses. Only the range
+is scanned. Counts, cancellation, iterator limits, and token recovery follow
+`lookup_network`. Repeat the endpoints on every page. A range cursor cannot be
+used for a CIDR query or another range.
+
 ### Field selection and custom records
 
-`lookup_ip`, `lookup_ips`, and `lookup_network` accept optional `fields`, with up
+`lookup_ip`, `lookup_ips`, `lookup_network`, and `lookup_range` accept optional `fields`, with up
 to 64 paths. Omit `fields` or use `[]` to return full records. Selected data is
 an object keyed by the requested paths. Missing paths are omitted. For example,
 `["country.iso_code"]` returns `{"country.iso_code":"US"}` in `data`.
@@ -348,7 +362,7 @@ For `2026-07-28` clients, `server/discover` and `tools/list` advertise a five-mi
 
 Initialization and discovery include instructions for choosing databases, filtering, pagination, and error recovery. Tools also provide readable display titles. Their names and arguments are unchanged.
 
-Clients can request progress for `lookup_network` and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
+Clients can request progress for network and range lookups, comparisons, summaries, verification, and `update_databases` by supplying a string or integer `_meta.progressToken`. Notifications report the current edition, MMDB bytes received, or records scanned. The `progress` counter counts status updates, not a percentage. Totals are omitted because the work is not known in advance. Notifications are limited to one per second per request and stop when the operation ends or is canceled. Automatic background downloads do not send progress notifications.
 
 Stdio integration tests cover legacy initialization for `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`, plus `2026-07-28` discovery and direct requests. They verify response metadata, invalid metadata, unsupported versions, progress, and cancellation of an active download. Protocol negotiation and transport behavior are provided by `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
 

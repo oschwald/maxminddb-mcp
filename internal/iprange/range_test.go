@@ -1,6 +1,7 @@
 package iprange
 
 import (
+	"math/big"
 	"net/netip"
 	"testing"
 )
@@ -39,5 +40,45 @@ func TestPrefixRanges(t *testing.T) {
 	}
 	if _, ok := ForPrefix(netip.MustParsePrefix("2001:db8::/32"), true); ok {
 		t.Fatal("unrelated IPv6 range became IPv4")
+	}
+}
+
+func TestRangePrefixes(t *testing.T) {
+	for _, endpoints := range [][2]string{
+		{"10.0.0.1", "10.0.3.254"},
+		{"1.255.255.255", "2.0.0.0"},
+		{"0.0.0.0", "255.255.255.255"},
+		{"::", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"},
+		{"::1", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe"},
+		{"2001:db8::7", "2001:db8::130"},
+		{"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"},
+	} {
+		r, err := New(netip.MustParseAddr(endpoints[0]), netip.MustParseAddr(endpoints[1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		prefixes := r.Prefixes()
+		if len(prefixes) > 254 {
+			t.Fatalf("unbounded decomposition: %d", len(prefixes))
+		}
+		next := r.Start
+		total := new(big.Int)
+		for _, prefix := range prefixes {
+			span := FromPrefix(prefix)
+			if span.Start != next || span.End.Compare(r.End) > 0 || prefix != prefix.Masked() {
+				t.Fatalf("incorrect cover %s in %+v", prefix, r)
+			}
+			total.Add(total, span.Size())
+			next = span.End.Next()
+		}
+		if total.Cmp(r.Size()) != 0 {
+			t.Fatalf("incomplete cover: %v", prefixes)
+		}
+	}
+	if _, err := New(
+		netip.MustParseAddr("::ffff:10.0.0.1%zone"),
+		netip.MustParseAddr("10.0.0.2"),
+	); err == nil {
+		t.Fatal("accepted zoned mapped address")
 	}
 }
