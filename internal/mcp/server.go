@@ -150,7 +150,7 @@ func (s *Server) handleLookupIP(
 
 // handleLookupNetwork handles the lookup_network tool.
 func (s *Server) handleLookupNetwork(
-	_ context.Context,
+	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	networkStr, err := request.RequireString("network")
@@ -243,7 +243,7 @@ func (s *Server) handleLookupNetwork(
 	if iter == nil {
 		if resumeToken := request.GetString("resume_token", ""); resumeToken != "" {
 			var err error
-			iter, err = s.iterMgr.ResumeIterator(reader, resumeToken)
+			iter, err = s.iterMgr.ResumeIterator(reader, dbName, resumeToken)
 			if err != nil {
 				return mcp.NewToolResultStructuredOnly(map[string]any{
 					"error": map[string]any{
@@ -270,7 +270,7 @@ func (s *Server) handleLookupNetwork(
 	}
 
 	// Perform iteration
-	result, err := s.iterMgr.Iterate(iter, maxResults)
+	result, err := s.iterMgr.Iterate(ctx, iter, maxResults)
 	if err != nil {
 		return mcp.NewToolResultStructuredOnly(map[string]any{
 			"error": map[string]any{

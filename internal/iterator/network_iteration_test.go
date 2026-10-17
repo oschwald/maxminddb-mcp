@@ -1,6 +1,7 @@
 package iterator
 
 import (
+	"context"
 	"net/netip"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestNetworkIterationFilters(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := manager.Iterate(iter, 10)
+			result, err := manager.Iterate(context.Background(), iter, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
