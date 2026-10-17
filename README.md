@@ -2,902 +2,269 @@
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-A powerful Model Context Protocol (MCP) server that provides comprehensive geolocation and network intelligence through MaxMindDB databases. Query GeoIP2, GeoLite2, and custom MMDB files with advanced filtering, stateful iteration, and automatic updates.
+Query GeoIP2, GeoLite2, and custom MMDB files through the Model Context Protocol (MCP). The server supports IP lookups, filtered network queries, resumable pages, and MaxMind database downloads.
 
-> **Important Notice**: This is an **unofficial project** and is **not endorsed by MaxMind Inc.** This MCP server is an independent implementation. For official MaxMind products and support, please visit [maxmind.com](https://www.maxmind.com/).
+This is an unofficial project and is not endorsed by MaxMind Inc. For official products and support, visit [maxmind.com](https://www.maxmind.com/).
 
-## Features
+## Install
 
-- **Multiple Data Sources**: MaxMind accounts, directory scanning, and GeoIP.conf compatibility
-- **Advanced Filtering**: Query by any MMDB field with 11+ operators (equals, regex, comparisons, etc.)
-- **Stateful Iteration**: Process large network ranges efficiently with resumable iterators
-- **Auto-updating**: Automatic database downloads and updates from MaxMind
-- **File Watching**: Dynamic loading of new/updated database files
-- **Flexible Configuration**: TOML config with GeoIP.conf fallback support
-
-## Quick Start
-
-### Installation
-
-#### Option 1: Install from Go
+Use Go 1.26 or later. The module selects Go 1.27.2 for builds.
 
 ```bash
 go install github.com/oschwald/maxminddb-mcp/cmd/maxminddb-mcp@latest
 ```
 
-#### Option 2: Build from Source
+To build and test this checkout:
 
 ```bash
-git clone https://github.com/oschwald/maxminddb-mcp.git
+git clone --recurse-submodules https://github.com/oschwald/maxminddb-mcp.git
 cd maxminddb-mcp
-go build -o maxminddb-mcp cmd/maxminddb-mcp/main.go
+go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
+go test -race ./...
 ```
 
-### Basic Configuration
+The test fixture generator uses Go 1.27 and a pinned prerelease of `mmdbwriter/v2`. It is a separate module in `testdata` and is not a runtime dependency.
 
-Create `~/.config/maxminddb-mcp/config.toml`:
+## Configure
+
+Create `~/.config/maxminddb-mcp/config.toml`. Choose one mode.
+
+### Download from MaxMind
 
 ```toml
 mode = "maxmind"
 auto_update = true
 update_interval = "24h"
-
-[maxmind]
-account_id = 123456
-license_key = "your_license_key_here"
-editions = ["GeoLite2-City", "GeoLite2-Country", "GeoLite2-ASN"]
-database_dir = "~/.cache/maxminddb-mcp/databases"
-```
-
-## Client Integration
-
-<details>
-<summary>Claude Desktop</summary>
-
-Add to your Claude Desktop configuration file:
-
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
-**Linux**: `~/.config/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "maxminddb": {
-      "command": "maxminddb-mcp",
-      "env": {
-        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-      }
-    }
-  }
-}
-```
-
-Alternative with existing GeoIP.conf:
-
-```json
-{
-  "mcpServers": {
-    "maxminddb": {
-      "command": "maxminddb-mcp"
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>Claude Code CLI</summary>
-
-Add the MCP server to Claude Code CLI:
-
-```bash
-claude mcp add maxminddb maxminddb-mcp
-```
-
-To use with a custom config:
-
-```bash
-MAXMINDDB_MCP_CONFIG=/path/to/config.toml claude chat
-```
-
-</details>
-
-<details>
-<summary>Claude Code (VS Code Extension)</summary>
-
-Install the Claude Code extension and add to VS Code settings:
-
-```json
-{
-  "claude.mcpServers": {
-    "maxminddb": {
-      "command": "maxminddb-mcp",
-      "env": {
-        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-      }
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>Continue</summary>
-
-Install the Continue extension and add to your Continue configuration (`~/.continue/config.json`):
-
-```json
-{
-  "mcpServers": [
-    {
-      "name": "maxminddb",
-      "command": "maxminddb-mcp",
-      "env": {
-        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-      }
-    }
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>Zed</summary>
-
-Add to Zed settings (`~/.config/zed/settings.json`):
-
-```json
-{
-  "assistant": {
-    "mcp_servers": [
-      {
-        "name": "maxminddb",
-        "command": "maxminddb-mcp",
-        "env": {
-          "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-        }
-      }
-    ]
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>Cline</summary>
-
-Install Cline and add to VS Code settings:
-
-```json
-{
-  "cline.mcpServers": {
-    "maxminddb": {
-      "command": "maxminddb-mcp",
-      "env": {
-        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-      }
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>Gemini CLI</summary>
-
-Add to your Gemini CLI configuration:
-
-```json
-{
-  "mcpServers": {
-    "maxminddb": {
-      "command": "maxminddb-mcp",
-      "env": {
-        "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-      }
-    }
-  }
-}
-```
-
-See the [Gemini CLI MCP guide](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md) for more details.
-
-</details>
-
-<details>
-<summary>Codex</summary>
-
-Add to your Codex configuration file:
-
-```toml
-[mcp_servers.maxminddb]
-command = "maxminddb-mcp"
-env = { MAXMINDDB_MCP_CONFIG = "/path/to/your/config.toml" }
-```
-
-Or without custom config:
-
-```toml
-[mcp_servers.maxminddb]
-command = "maxminddb-mcp"
-```
-
-</details>
-
-<details>
-<summary>Sourcegraph Cody</summary>
-
-Add to Cody settings:
-
-```json
-{
-  "cody.experimental.mcp": {
-    "servers": {
-      "maxminddb": {
-        "command": "maxminddb-mcp",
-        "env": {
-          "MAXMINDDB_MCP_CONFIG": "/path/to/your/config.toml"
-        }
-      }
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>LLM (Simon Willison)</summary>
-
-Install the LLM tool and configure MCP:
-
-```bash
-# Install LLM
-pip install llm
-
-# Configure MCP server
-llm mcp install maxminddb-mcp --command maxminddb-mcp
-
-# Use with environment variable
-MAXMINDDB_MCP_CONFIG=/path/to/config.toml llm chat -m claude-3.5-sonnet
-```
-
-</details>
-
-<details>
-<summary>Python SDK</summary>
-
-```bash
-pip install mcp
-```
-
-```python
-from mcp import ClientSession, StdioServerParameters
-
-async with ClientSession(
-    StdioServerParameters(
-        command="maxminddb-mcp",
-        env={"MAXMINDDB_MCP_CONFIG": "/path/to/config.toml"}
-    )
-) as session:
-    await session.initialize()
-    tools = await session.list_tools()
-    result = await session.call_tool("lookup_ip", {"ip": "8.8.8.8"})
-```
-
-</details>
-
-<details>
-<summary>TypeScript SDK</summary>
-
-```bash
-npm install @modelcontextprotocol/sdk
-```
-
-```typescript
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-
-const transport = new StdioClientTransport({
-  command: "maxminddb-mcp",
-  env: { MAXMINDDB_MCP_CONFIG: "/path/to/config.toml" },
-});
-
-const client = new Client(
-  {
-    name: "maxminddb-client",
-    version: "1.0.0",
-  },
-  { capabilities: {} }
-);
-
-await client.connect(transport);
-const result = await client.callTool({
-  name: "lookup_ip",
-  arguments: { ip: "8.8.8.8" },
-});
-```
-
-</details>
-
-<details>
-<summary>Go SDK</summary>
-
-```bash
-go get github.com/mark3labs/mcp-go
-```
-
-```go
-import (
-    "github.com/mark3labs/mcp-go/client"
-    "github.com/mark3labs/mcp-go/transport/stdio"
-)
-
-cmd := exec.Command("maxminddb-mcp")
-cmd.Env = append(cmd.Env, "MAXMINDDB_MCP_CONFIG=/path/to/config.toml")
-
-transport := stdio.NewTransport(cmd)
-mcpClient := client.New(transport)
-// ... use client
-```
-
-</details>
-
-<details>
-<summary>Command Line Testing</summary>
-
-Test the server directly using JSON-RPC:
-
-```bash
-# List available tools
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | maxminddb-mcp
-
-# Test IP lookup
-echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lookup_ip","arguments":{"ip":"8.8.8.8"}}}' | maxminddb-mcp
-
-# Pretty output with jq
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | maxminddb-mcp | jq .
-```
-
-</details>
-
-### Configuration Notes
-
-**Path Requirements**: Ensure `maxminddb-mcp` is in your system PATH or provide the full path to the binary.
-
-**Environment Variables**: All clients support these environment variables:
-
-- `MAXMINDDB_MCP_CONFIG`: Path to configuration file
-- `MAXMINDDB_MCP_LOG_LEVEL`: Logging level (`debug`, `info`, `warn`, `error`)
-- `MAXMINDDB_MCP_LOG_FORMAT`: Log format (`text`, `json`)
-
-**Security**: Store sensitive configuration (API keys) in files with appropriate permissions (600) rather than environment variables in client configs.
-
-## Configuration
-
-### Configuration Modes
-
-The server supports three configuration modes (checked in order):
-
-1. **Environment variable**: `MAXMINDDB_MCP_CONFIG`
-2. **User config**: `~/.config/maxminddb-mcp/config.toml`
-3. **GeoIP.conf compatibility**: `/etc/GeoIP.conf` or `~/.config/maxminddb-mcp/GeoIP.conf`
-
-### TOML Configuration
-
-<details>
-<summary>Complete configuration example</summary>
-
-```toml
-# Operation mode: "maxmind", "directory", or "geoip_compat"
-mode = "maxmind"
-
-# Auto-update settings
-auto_update = true
-update_interval = "24h"
-
-# Iterator settings
 iterator_ttl = "10m"
 iterator_cleanup_interval = "1m"
 
-# Logging (optional)
-log_level = "info"  # debug, info, warn, error
-log_format = "text" # text, json
-
 [maxmind]
-# MaxMind account credentials
 account_id = 123456
 license_key = "your_license_key_here"
-
-# Databases to download
-editions = [
-    "GeoLite2-City",
-    "GeoLite2-Country",
-    "GeoLite2-ASN",
-    "GeoIP2-City",
-    "GeoIP2-Country"
-]
-
-# Storage location
+editions = ["GeoLite2-City", "GeoLite2-ASN"]
 database_dir = "~/.cache/maxminddb-mcp/databases"
-
-# Custom endpoint (optional)
 # endpoint = "https://updates.maxmind.com"
-
-[directory]
-# For directory mode - scan these paths for MMDB files
-paths = [
-    "/path/to/mmdb/files",
-    "/another/path"
-]
-
-[geoip_compat]
-# For GeoIP.conf compatibility mode
-config_path = "/etc/GeoIP.conf"
-database_dir = "/var/lib/GeoIP"
 ```
 
-</details>
+Keep files containing credentials readable only by their owner, for example with `chmod 600 config.toml`.
 
-#### Configuration Options
+When no databases are loaded, an initial download starts in the background. MCP requests can run during that download. Until it finishes, `list_databases` can return an empty list. Each download has a five-minute deadline.
 
-**Iterator Settings:**
+Scheduled updates run when `auto_update` is true. `update_databases` also supports manual updates. Downloads use a unique temporary file and must pass checksum and MMDB validation before replacing the installed file. Missing or changed files are detected from their actual contents. Old `.checksums` files are ignored.
 
-- `iterator_ttl` (default: "10m"): How long idle iterators are kept before cleanup
-- `iterator_cleanup_interval` (default: "1m"): How often to check for expired iterators
-
-### GeoIP.conf Compatibility
-
-<details>
-<summary>Existing GeoIP.conf users</summary>
-
-The server automatically detects and uses existing GeoIP.conf files:
-
-```conf
-# Example GeoIP.conf
-AccountID 123456
-LicenseKey your_license_key_here
-EditionIDs GeoLite2-Country GeoLite2-City GeoLite2-ASN
-DatabaseDirectory /var/lib/GeoIP
-```
-
-No additional configuration needed - the server will automatically use compatibility mode.
-
-</details>
-
-## Available Tools
-
-### Core Tools
-
-#### `lookup_ip`
-
-Look up geolocation and network information for a specific IP address.
-
-**Parameters:**
-
-- `ip` (required): IP address to lookup (IPv4 or IPv6)
-- `database` (optional): Specific database filename to query
-
-**Example:**
-
-```json
-{
-  "name": "lookup_ip",
-  "arguments": {
-    "ip": "8.8.8.8",
-    "database": "GeoLite2-City.mmdb"
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "ip": "8.8.8.8",
-  "network": "8.8.8.0/24",
-  "data": {
-    "country": {
-      "iso_code": "US",
-      "names": { "en": "United States" }
-    },
-    "location": {
-      "latitude": 37.4056,
-      "longitude": -122.0775
-    }
-  }
-}
-```
-
-#### `lookup_network`
-
-Query all IP addresses in a network range with powerful filtering capabilities.
-
-**Parameters:**
-
-- `network` (required): CIDR network to scan (e.g., "192.168.1.0/24")
-- `database` (optional): Specific database to query
-- `filters` (optional): Array of filter objects. Each object must include `field`, `operator`, and `value`.
-- `filter_mode` (optional): "and" (default) or "or"
-- `max_results` (optional): Maximum results to return (default: 1000)
-- `iterator_id` (optional): Resume existing iterator
-- `resume_token` (optional): Fallback token for expired iterators
-
-<details>
-<summary>Filtering Examples</summary>
-
-**Filter by country:**
-
-```json
-{
-  "name": "lookup_network",
-  "arguments": {
-    "network": "10.0.0.0/8",
-    "filters": [
-      {
-        "field": "country.iso_code",
-        "operator": "in",
-        "value": ["US", "CA", "MX"]
-      }
-    ]
-  }
-}
-```
-
-**Filter residential IPs:**
-
-```json
-{
-  "name": "lookup_network",
-  "arguments": {
-    "network": "192.168.0.0/16",
-    "filters": [
-      {
-        "field": "traits.user_type",
-        "operator": "equals",
-        "value": "residential"
-      }
-    ]
-  }
-}
-```
-
-Common mistakes and validation
-
-- Do not pass filters as strings like `"traits.user_type=residential"`. The server rejects this with `invalid_filter` and a hint to use objects: `{ "field": "traits.user_type", "operator": "equals", "value": "residential" }`.
-- `filters` must be an array of objects; other types are invalid.
-- `operator` must be supported (see list below). Short aliases (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`) are also accepted.
-
-**Complex filtering (non-proxy IPs):**
-
-```json
-{
-  "name": "lookup_network",
-  "arguments": {
-    "network": "10.0.0.0/24",
-    "filters": [
-      {
-        "field": "traits.is_anonymous_proxy",
-        "operator": "equals",
-        "value": false
-      },
-      {
-        "field": "traits.is_satellite_provider",
-        "operator": "equals",
-        "value": false
-      }
-    ],
-    "filter_mode": "and"
-  }
-}
-```
-
-</details>
-
-#### `list_databases`
-
-List all available MaxMind databases with metadata.
-
-**Example:**
-
-```json
-{
-  "name": "list_databases",
-  "arguments": {}
-}
-```
-
-**Response:**
-
-```json
-{
-  "databases": [
-    {
-      "name": "GeoLite2-City.mmdb",
-      "type": "City",
-      "description": "GeoLite2 City Database",
-      "last_updated": "2024-01-15T10:30:00Z",
-      "size": 67108864
-    }
-  ]
-}
-```
-
-#### `update_databases`
-
-Manually trigger database updates (MaxMind/GeoIP modes only).
-
-**Example:**
-
-```json
-{
-  "name": "update_databases",
-  "arguments": {}
-}
-```
-
-### Filter Operators
-
-**Supported Operators:**
-
-- `equals`: Exact match
-- `not_equals`: Not equal to value
-- `in`: Value is in provided array
-- `not_in`: Value is not in provided array
-- `contains`: String contains substring
-- `regex`: Matches regular expression
-- `greater_than`: Numeric comparison
-- `greater_than_or_equal`: Numeric comparison (≥)
-- `less_than`: Numeric comparison
-- `less_than_or_equal`: Numeric comparison (≤)
-- `exists`: Field exists (boolean value)
-
-**Operator Aliases:**
-For convenience, short operator aliases are supported (case-insensitive):
-
-- `eq` → `equals`
-- `ne` → `not_equals`
-- `gt` → `greater_than`
-- `gte` → `greater_than_or_equal`
-- `lt` → `less_than`
-- `lte` → `less_than_or_equal`
-
-### Error Handling
-
-All tools return structured error responses with machine-readable error codes:
-
-```json
-{
-  "error": {
-    "code": "db_not_found",
-    "message": "Database not found: invalid_db.mmdb"
-  }
-}
-```
-
-**Common Error Codes:**
-
-- `db_not_found`: Specified database does not exist
-- `invalid_ip`: IP address format is invalid
-- `invalid_network`: Network CIDR format is invalid
-- `invalid_filter`: Filter validation failed
-- `iterator_not_found`: Iterator ID not found or expired
-- `parse_error`: Failed to parse request parameters
-
-## Advanced Features
-
-### Stateful Iterator System
-
-For large network queries, the server uses a stateful iterator system:
-
-1. **Fast Path**: Resume active iterations using `iterator_id`
-2. **Resilient Path**: Resume from `resume_token` after expiration
-3. **Automatic Cleanup**: Expired iterators cleaned up after TTL
-4. **Efficient Skip**: Skip to resume point without re-processing
-
-**Example iteration workflow:**
-
-```json
-// First call - creates iterator
-{
-  "name": "lookup_network",
-  "arguments": {
-    "network": "10.0.0.0/8",
-    "max_results": 1000
-  }
-}
-
-// Response includes iterator_id for continuation
-{
-  "results": [...],
-  "iterator_id": "iter_abc123",
-  "resume_token": "eyJ0eXAiOiJKV1Q...",
-  "has_more": true
-}
-
-// Continue with iterator_id (fast path)
-{
-  "name": "lookup_network",
-  "arguments": {
-    "network": "10.0.0.0/8",
-    "iterator_id": "iter_abc123",
-    "max_results": 1000
-  }
-}
-```
-
-### Auto-updating
-
-<details>
-<summary>Automatic database updates</summary>
-
-Configure automatic updates in your TOML config:
-
-```toml
-auto_update = true
-update_interval = "24h"  # Check every 24 hours
-```
-
-The server will:
-
-- Check for database updates on the specified interval
-- Download only if MD5 checksums have changed
-- Gracefully reload databases without interrupting active queries
-- Log update status and any errors
-
-**Manual Updates:**
-Use the `update_databases` tool to trigger immediate updates.
-
-</details>
-
-### File Watching
-
-<details>
-<summary>Directory mode with file watching</summary>
-
-In directory mode, the server watches for filesystem changes:
+### Use local MMDB files
 
 ```toml
 mode = "directory"
 
 [directory]
-paths = ["/path/to/mmdb/files"]
+paths = ["/absolute/path/to/databases"]
 ```
 
-**Supported events:**
+The server loads MMDB files recursively and watches the directories present at startup. Restart the server after adding subdirectories. Database names are filenames, including `.mmdb`, and must be unique across configured directories. Duplicate names are rejected.
 
-- **Create**: Automatically loads new MMDB files
-- **Write**: Reloads modified databases
-- **Remove**: Removes databases from available list
-- **Rename**: Handles file renames gracefully
+Replace databases by writing a separate file and renaming it into place. Active iterators retain their original reader. In-place writes can invalidate a memory-mapped file.
 
-**Subdirectory support:** Recursively watches all subdirectories for MMDB files.
+### Use an existing GeoIP.conf
 
-</details>
+```toml
+mode = "geoip_compat"
 
-## Troubleshooting
+[geoip_compat]
+config_path = "/etc/GeoIP.conf"
+# Optional override of DatabaseDirectory from GeoIP.conf:
+# database_dir = "/var/lib/GeoIP"
+```
 
-### Common Issues
+The server reads `AccountID`, `LicenseKey`, `EditionIDs`, `DatabaseDirectory`, and `Host` from the referenced file. `UserId` and `ProductIds` remain accepted aliases. A `Host` without a URL scheme uses HTTPS. Other geoipupdate options, including its proxy and retry settings, are not applied by this server.
 
-<details>
-<summary>Server not starting</summary>
+If `config_path` is omitted, the server searches the user GeoIP.conf, `/etc/GeoIP.conf`, and `/usr/local/etc/GeoIP.conf`, in that order.
 
-**Check configuration:**
+### Config discovery and defaults
+
+An explicit `MAXMINDDB_MCP_CONFIG` must point to an existing `.toml` file or a file named `GeoIP.conf`. A missing explicit file is an error. Otherwise, the server searches:
+
+1. `~/.config/maxminddb-mcp/config.toml`
+2. `~/.config/maxminddb-mcp/GeoIP.conf`
+3. `/etc/GeoIP.conf`
+
+The default database directory is `~/.cache/maxminddb-mcp/databases`. Database paths and `geoip_compat.config_path` beginning with `~/` are expanded. Duration defaults are `24h` for updates, `10m` for iterator idle expiry, and `1m` for cleanup. All durations must be positive, including when automatic updates are disabled.
+
+Logging uses environment variables:
+
+| Variable                   | Values                                     |
+| -------------------------- | ------------------------------------------ |
+| `MAXMINDDB_MCP_CONFIG`     | Config file path                           |
+| `MAXMINDDB_MCP_LOG_LEVEL`  | `debug`, `info` (default), `warn`, `error` |
+| `MAXMINDDB_MCP_LOG_FORMAT` | `text` (default), `json`                   |
+
+TOML `log_level` and `log_format` settings are not supported. Logs go to stderr. Stdout carries only MCP messages.
+
+## Connect a client
+
+This is a local **stdio** server. Configure your client to launch the installed binary, using an absolute path if it is not in the client's PATH. The server does not expose an HTTP endpoint.
+
+### Codex
 
 ```bash
-# Verify config file syntax
-maxminddb-mcp --help
-
-# Test configuration loading
-MAXMINDDB_MCP_LOG_LEVEL=debug maxminddb-mcp
+codex mcp add maxminddb \
+  --env MAXMINDDB_MCP_CONFIG=/absolute/path/to/config.toml \
+  -- /absolute/path/to/maxminddb-mcp
 ```
 
-**Common causes:**
+Or add to `~/.codex/config.toml`:
 
-- Invalid TOML syntax in config file
-- Missing MaxMind credentials
-- Insufficient file permissions
-- Invalid database directory path
+```toml
+[mcp_servers.maxminddb]
+command = "/absolute/path/to/maxminddb-mcp"
+env = { MAXMINDDB_MCP_CONFIG = "/absolute/path/to/config.toml" }
+```
 
-</details>
+See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-<details>
-<summary>Database loading failures</summary>
-
-**Check database status:**
+### Claude Code
 
 ```bash
-# Enable debug logging
-MAXMINDDB_MCP_LOG_LEVEL=debug maxminddb-mcp
+claude mcp add \
+  --env MAXMINDDB_MCP_CONFIG=/absolute/path/to/config.toml \
+  --transport stdio maxminddb -- /absolute/path/to/maxminddb-mcp
 ```
 
-**Common causes:**
+See the [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 
-- Corrupt MMDB files (check file integrity)
-- Insufficient disk space for downloads
-- Network connectivity issues to updates.maxmind.com
-- Expired MaxMind subscription
+### Zed
 
-</details>
+Add a local server in Settings → AI → MCP Servers, or use:
 
-<details>
-<summary>Claude Desktop integration</summary>
+```json
+{
+  "context_servers": {
+    "maxminddb": {
+      "command": "/absolute/path/to/maxminddb-mcp",
+      "args": [],
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "/absolute/path/to/config.toml"
+      }
+    }
+  }
+}
+```
 
-**Verify server path:**
+See the [Zed MCP documentation](https://zed.dev/docs/ai/mcp). For other clients and SDKs, use their current stdio transport instructions with the same command and environment variables.
+
+### Docker
+
+Use interactive stdin (`-i`) without a TTY. Set `database_dir = "/data"` in a MaxMind-mode config:
 
 ```bash
-# Check server is in PATH
-which maxminddb-mcp
-
-# Test server directly
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | maxminddb-mcp
+docker run --rm -i \
+  -v "$HOME/.config/maxminddb-mcp/config.toml:/config/config.toml:ro" \
+  -v maxminddb-data:/data \
+  ghcr.io/oschwald/maxminddb-mcp:latest
 ```
 
-**Configuration file locations:**
+The image runs as UID 1001. A config bind mount must be readable by that user. A data bind mount must be writable by that user when downloads are enabled. Docker named volumes inherit the image's `/data` permissions on first use.
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
+The container has no HTTP port or subprocess healthcheck. Check the running MCP connection from the client.
 
-</details>
+## Tools
 
-### Debug Mode
+Successful results include structured JSON and a JSON text fallback. Tool execution failures set MCP `isError: true`. Schema validation rejects unknown arguments and invalid types. Read tools are annotated as local and read-only. `update_databases` is annotated as a network operation that replaces files.
 
-Enable detailed logging for troubleshooting:
+### `lookup_ip`
+
+Arguments: required `ip` (IPv4 or IPv6), optional `database` from `list_databases`.
+
+```json
+{
+  "name": "lookup_ip",
+  "arguments": { "ip": "1.0.0.1", "database": "GeoLite2-ASN.mmdb" }
+}
+```
+
+A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`.
+
+### `lookup_network`
+
+Returns database network records overlapping a CIDR range. It does not return one result per IP address.
+
+| Argument       | Meaning                                                                              |
+| -------------- | ------------------------------------------------------------------------------------ |
+| `network`      | Required IPv4 or IPv6 CIDR range                                                     |
+| `database`     | Required for a new query or token resume if more than one database is loaded         |
+| `filters`      | Optional array of objects with `field`, `operator`, and `value`                      |
+| `filter_mode`  | `and` (default) or `or`                                                              |
+| `max_results`  | Integer from 1 to 1000, default 1000                                                 |
+| `iterator_id`  | Continue a live iterator                                                             |
+| `resume_token` | Resume after expiry or restart, or fall back if `iterator_id` is no longer available |
+
+```json
+{
+  "name": "lookup_network",
+  "arguments": {
+    "network": "1.0.0.0/8",
+    "database": "GeoLite2-ASN.mmdb",
+    "max_results": 100,
+    "filters": [
+      {
+        "field": "autonomous_system_number",
+        "operator": "equals",
+        "value": 13335
+      }
+    ]
+  }
+}
+```
+
+Each page contains `results` (objects with `network` and `data`), `iterator_id`, `resume_token`, `has_more`, `total_processed`, and `total_matched`. `has_more` means at least one additional matching record exists. Totals are cumulative. Processed totals can include nonmatching records scanned ahead to determine whether another page exists.
+
+For the next page, send the same `network` and the returned `iterator_id`. Retain `database` and `resume_token` for fallback. Omit `filters` and `filter_mode` to reuse the original values. Supplied query parameters must match the original query. Page size can change.
+
+An unknown or expired ID without a token returns `iterator_expired`. Token resumes validate the database name, MMDB type, and build epoch. If the database build changed, start a new query. Tokens from earlier server versions are not accepted. Tokens are opaque continuation data, not authentication credentials.
+
+Live iterators retain a cursor. Token resumes scan to the saved position once. Requests on the same iterator run serially. Cancellation rolls back an incomplete page so it can be retried without losing records.
+
+A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. There is no hard limit on the number of live iterators.
+
+### Filters
+
+Fields use dot notation, such as `country.iso_code`. Operators and aliases use lowercase:
+
+| Operators                                             | Value                                |
+| ----------------------------------------------------- | ------------------------------------ |
+| `equals`, `not_equals` (`eq`, `ne`)                   | A value to compare                   |
+| `in`, `not_in`                                        | An array of values                   |
+| `contains`, `regex`                                   | A substring or Go regular expression |
+| `greater_than`, `greater_than_or_equal` (`gt`, `gte`) | A number                             |
+| `less_than`, `less_than_or_equal` (`lt`, `lte`)       | A number                             |
+| `exists`                                              | A boolean                            |
+
+Numeric equality works across decoded MMDB integers and JSON numbers. JSON clients can lose precision for integers above 2⁵³. Numeric ordering also converts values to floating point.
+
+### `list_databases`
+
+Accepts no arguments. Returns `databases`, sorted by filename. Each entry contains `name`, `type`, `description`, `last_updated`, and file `size` in bytes. Type, English description, and build time come from MMDB metadata. `last_updated` is the build time, not the file's modification time.
+
+### `update_databases`
+
+Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Returns a `results` array with per-edition `database`, `updated`, `last_update`, and optional `size` or `error`. Any failed edition makes the tool result an MCP error while preserving all edition results.
+
+### Errors
+
+Application errors include an `error` object with `code` and `message`. Common codes are `invalid_ip`, `invalid_network`, `invalid_filter`, `db_not_found`, `no_databases`, `database_required`, `iterator_expired`, `query_mismatch`, and `resume_failed`. Input-schema errors use the SDK's error text.
+
+## Protocol and development
+
+Stdio integration tests cover the legacy initialize handshake (`2024-11-05` and `2025-11-25`) and the `2026-07-28` discovery flow. Protocol negotiation and transport behavior are provided by `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
+
+Use an MCP client for manual checks. A one-line pipe that closes stdin immediately can cancel a request before its response is written. Automated protocol tests are available with:
 
 ```bash
-# Environment variables
-MAXMINDDB_MCP_LOG_LEVEL=debug
-MAXMINDDB_MCP_LOG_FORMAT=json
-
-# Or in config.toml
-log_level = "debug"
-log_format = "json"
+go test -race ./internal/mcp ./cmd/maxminddb-mcp
 ```
 
-### Configuration Validation
-
-The server validates all configuration on startup and provides detailed error messages:
-
-- Required fields for each mode
-- Valid duration formats (e.g., "24h", "10m")
-- Path expansion and validation
-- Network connectivity checks
-
-## Performance Considerations
-
-### Memory Usage
-
-- **Base memory**: ~50MB
-- **Database storage**: 100-500MB depending on editions
-
-### Optimization Tips
-
-- Avoid unnecessary iterations: use selective filters and appropriate `max_results`
-- **Database selection**: Only download needed editions to reduce memory usage
-- **Update frequency**: Balance freshness vs. network usage with `update_interval`
-- **Filter efficiency**: Use selective filters early to reduce processing
-
-### Resource Limits
-
-- **Concurrent iterators**: No hard limit, managed by TTL cleanup
-- **Network query size**: Limited by available memory and `max_results`
-- **Database file size**: Supports databases up to several GB
+For development, release checks, and fixture generation, see [CONTRIBUTING.md](CONTRIBUTING.md). Report issues at [GitHub Issues](https://github.com/oschwald/maxminddb-mcp/issues).
 
 ## License
 
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on how to submit pull requests, report issues, and suggest improvements.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/oschwald/maxminddb-mcp/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/oschwald/maxminddb-mcp/discussions)
+[ISC](LICENSE).

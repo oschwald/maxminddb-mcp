@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Require Go 1.26 and build with Go 1.27.2. Update mcp-go to 1.3.0, maxminddb-golang/v2 to 2.8.0, geoipupdate to v8, fsnotify, go-toml, and indirect dependencies.
+- Update the fixture submodule to an upstream revision using a pinned `mmdbwriter/v2` prerelease. This dependency is used only by the fixture generator.
+- Validate MCP input and output schemas. Add tool annotations and use the build's version in server metadata.
+- Limit network pages to integers from 1 to 1000. Require an explicit database when a new query or token resume could select more than one database.
+- Bind resume tokens to the database name, MMDB type, and build epoch. Tokens from earlier versions must be replaced with a new query.
+- Use MMDB metadata for database type, description, and build time. Reject duplicate database filenames across directories.
+- Pin formatting and release tools, update GitHub Actions, use Node 24, and add vulnerability and fixture-generator checks to CI.
+- Update the container base to Alpine 3.24 and remove its subprocess healthcheck.
+- Replace obsolete client examples with verified stdio configuration and current tool contracts.
+
+### Fixed
+
+- Prevent panics and unbounded page allocation from invalid `max_results` values.
+- Continue after the last returned record and report `has_more` only when another matching record exists.
+- Serialize page operations, synchronize iterator timestamps, enforce expiry on access, and release pull cursors during cleanup.
+- Honor request cancellation and roll back interrupted pages. Reject unknown iterator IDs and mismatched continuation queries instead of silently restarting.
+- Compare numeric equality across MMDB integer types and JSON numbers without converting large integers to imprecise floats.
+- Set MCP `isError` for tool failures, including failed editions in a database update. IP lookups now include `found` and the matched prefix.
+- Load GeoIP.conf credentials referenced by TOML. Validate credentials and positive durations before starting timers, and fail when an explicit config file is missing.
+- Hash installed databases instead of trusting `.checksums`. Recover missing and modified files, validate downloaded MMDBs, and use unique temporary files.
+- Start initial downloads in the background with a five-minute deadline per download. Cancel work and close managers when stdio ends or the process receives a shutdown signal.
+- Replace home-dependent and live-network tests with bundled fixtures and local servers. Add race and stdio coverage for current and legacy protocol revisions.
+
+### Removed
+
+- The unused alternate iterator implementation and its duplicate tests.
+
 ## [0.1.0] - 2025-09-07
 
 ### Added
