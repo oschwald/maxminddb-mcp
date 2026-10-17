@@ -41,7 +41,7 @@ func (s *Server) registerSummaryTool() {
 		"summarize_network",
 		mcp.WithToolTitle("Summarize a network"),
 		mcp.WithDescription(
-			"Group matching records by a scalar field and count records and covered addresses within a CIDR. Limited to 10,000 scanned records and 100 groups. IPv4 aliases are counted once.",
+			"Group matching records by a scalar field and count records and covered addresses within a CIDR. Limited to 10,000 scanned records and 100 groups. IPv4 aliases are excluded.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -124,10 +124,15 @@ func summarize(
 ) (summaryResult, error) {
 	query := iprange.FromPrefix(prefix)
 	result := summaryResult{
-		Network:        prefix.String(),
-		GroupBy:        field,
-		TotalAddresses: query.Size().String(),
-		Groups:         []summaryGroup{},
+		Network:          prefix.String(),
+		GroupBy:          field,
+		TotalAddresses:   query.Size().String(),
+		MatchedAddresses: "0",
+		Groups:           []summaryGroup{},
+	}
+	aliased, err := hasAliasedAncestor(ctx, reader, prefix)
+	if err != nil || aliased {
+		return result, err
 	}
 	groups := map[string]*summaryGroup{}
 	counts := map[string]*big.Int{}
@@ -201,4 +206,31 @@ func summarize(
 	}
 	result.MatchedAddresses = total.String()
 	return result, nil
+}
+
+func hasAliasedAncestor(
+	ctx context.Context,
+	reader *maxminddb.Reader,
+	prefix netip.Prefix,
+) (bool, error) {
+	// NetworksWithin misses alias roots above the query. Probe each ancestor once.
+	for bits := prefix.Bits() - 1; prefix.Addr().Is6() && bits >= 0; bits-- {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		parent := netip.PrefixFrom(prefix.Addr(), bits).Masked()
+		present := false
+		// Including empty networks makes only excluded alias subtrees yield nothing.
+		for entry := range reader.NetworksWithin(parent, maxminddb.IncludeNetworksWithoutData()) {
+			if err := entry.Err(); err != nil {
+				return false, err
+			}
+			present = true
+			break
+		}
+		if !present {
+			return true, nil
+		}
+	}
+	return false, nil
 }

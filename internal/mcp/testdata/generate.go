@@ -20,7 +20,7 @@ func main() {
 	if len(os.Args) != 2 {
 		log.Fatal("usage: generate output-directory")
 	}
-	for _, version := range []string{"old", "new", "dense", "groups"} {
+	for _, version := range []string{"old", "new", "dense", "groups", "unaliased"} {
 		if err := generate(os.Args[1], version); err != nil {
 			log.Fatal(err)
 		}
@@ -31,7 +31,8 @@ func generate(directory, version string) error {
 	tree, err := mmdbwriter.New(mmdbwriter.Options{
 		DatabaseType: "MCP test records", BuildEpoch: 1700000000,
 		IPVersion: 6, IncludeReservedNetworks: true,
-		Languages: []string{"en"}, Description: map[string]string{"en": "Query tool fixtures"},
+		DisableIPv4Aliasing: version == "unaliased",
+		Languages:           []string{"en"}, Description: map[string]string{"en": "Query tool fixtures"},
 	})
 	if err != nil {
 		return err
@@ -43,7 +44,13 @@ func generate(directory, version string) error {
 		"2001:db8::/120": mmdbtype.Map{"country": mmdbtype.String("US"), "asn": mmdbtype.Uint32(1)},
 		"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128": mmdbtype.Bool(true),
 	}
-	if version == "groups" {
+	if version == "unaliased" {
+		records = map[string]mmdbtype.DataType{
+			"10.0.0.0/24":       mmdbtype.Bool(true),
+			"2001:0:a00::1/128": mmdbtype.Bool(true),
+			"2002:a00::1/128":   mmdbtype.Bool(true),
+		}
+	} else if version == "groups" {
 		records = map[string]mmdbtype.DataType{"2001:db8:eeee::/128": mmdbtype.String(strings.Repeat("x", 1024))}
 		address := netip.MustParseAddr("2001:db8:ffff::")
 		for i := range 101 {

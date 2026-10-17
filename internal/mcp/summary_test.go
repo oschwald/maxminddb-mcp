@@ -114,6 +114,70 @@ func TestSummaryFiltersAndErrors(t *testing.T) {
 	}
 }
 
+func TestSummaryAliasBoundaries(t *testing.T) {
+	reader, err := maxminddb.Open("testdata/old.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	for _, network := range []string{
+		"2001::/32", "2001:0:a00::/48", "2001:0:a00::1/128",
+		"2002::/16", "2002:a00::/32", "2002:a00::1/128",
+		"::ffff:0:0/96", "::ffff:a00:0/112", "::ffff:a00:1/128",
+	} {
+		t.Run(network, func(t *testing.T) {
+			result, err := summarize(
+				t.Context(),
+				reader,
+				netip.MustParsePrefix(network),
+				"country",
+				filter.New(nil, filter.ModeAnd),
+				nil,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.ScannedRecords != 0 || result.MatchedRecords != 0 ||
+				result.MatchedAddresses != "0" ||
+				len(result.Groups) != 0 {
+				t.Fatalf("alias counted: %+v", result)
+			}
+		})
+	}
+}
+
+func TestSummaryIndependentIPv6Records(t *testing.T) {
+	reader, err := maxminddb.Open("testdata/unaliased.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	for _, network := range []string{
+		"2001::/32", "2001:0:a00::/48", "2001:0:a00::1/128",
+		"2002::/16", "2002:a00::/32", "2002:a00::1/128",
+	} {
+		t.Run(network, func(t *testing.T) {
+			result, err := summarize(
+				t.Context(),
+				reader,
+				netip.MustParsePrefix(network),
+				"$",
+				filter.New(nil, filter.ModeAnd),
+				nil,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.ScannedRecords != 1 || result.MatchedRecords != 1 ||
+				result.MatchedAddresses != "1" ||
+				len(result.Groups) != 1 ||
+				result.Groups[0].Value != true {
+				t.Fatalf("independent record excluded: %+v", result)
+			}
+		})
+	}
+}
+
 func TestSummaryLimitsAndCancellation(t *testing.T) {
 	for _, test := range []struct{ file, network, message string }{
 		{"dense", "2001:db8:ffff::/112", "10,000 records"},

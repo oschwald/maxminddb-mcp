@@ -311,7 +311,8 @@ scalar value. Missing fields form a group with `missing: true`.
 
 Each group has `value`, `missing`, `records`, and `addresses`. Record counts
 count stored network records. Address counts include only addresses inside the
-query, with IPv4 aliases skipped. Counts can differ when equal answers are stored
+query, with IPv4 aliases skipped even when a query starts inside an alias.
+Independent IPv6 records in custom databases are retained. Counts can differ when equal answers are stored
 in networks of different sizes. Address counts are decimal strings to preserve
 IPv6 precision. `total_addresses` is the size of the query. `matched_addresses`
 is the coverage of matching records. Uncovered addresses do not form a group.
