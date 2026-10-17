@@ -75,6 +75,7 @@ checksum:
   extra_files:
     - glob: dist/*.mcpb
     - glob: dist/*_claude-plugin.zip
+    - glob: dist/*_openai-plugin.zip
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -178,6 +179,7 @@ release:
   extra_files:
     - glob: dist/*.mcpb
     - glob: dist/*_claude-plugin.zip
+    - glob: dist/*_openai-plugin.zip
   header: |
     ## MaxMindDB MCP Server {{ .Version }}
     
@@ -206,7 +208,12 @@ release:
 
     **Standalone:** Download an archive or Linux package for your platform.
     See the [installation guide](https://github.com/oschwald/maxminddb-mcp#installation)
-    for Codex, Claude Code, and the experimental Cowork plugin.
+    for ChatGPT desktop, Codex, Claude Code, and experimental desktop plugins.
+
+    **ChatGPT desktop plugin (experimental):** Download the `_openai-plugin.zip`
+    for your OS and architecture. It includes the server and a setup skill.
+    Follow the [local plugin guide](https://github.com/oschwald/maxminddb-mcp#chatgpt-desktop-plugin-experimental).
+    Existing server configuration is required. This is not a public directory listing.
     
     **Go Install:**
     ```bash
