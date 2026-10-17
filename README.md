@@ -180,10 +180,10 @@ Releases include `_openai-plugin.zip` packages for the same OS and architecture 
 
 The plugin uses [existing server configuration](#config-discovery-and-defaults). Keep credentials and databases outside the extracted package. OpenAI plugins do not support Claude's `userConfig` form or `${user_config.*}` substitutions, so this package does not prompt for account settings. See [OpenAI's migration guidance](https://developers.openai.com/plugins/guides/submit-claude-plugin#replace-claude-userconfig).
 
-To test through a local marketplace:
+This local marketplace workflow requires Codex CLI to register the extracted package. Extracting the ZIP alone does not make the plugin discoverable. Without Codex CLI, use the [direct ChatGPT desktop setup](#chatgpt-desktop) above.
 
 1. Download the matching `_openai-plugin.zip` from [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases) and extract it to a permanent folder.
-2. If you have Codex CLI, register the included marketplace:
+2. Register the included marketplace with Codex CLI:
 
    ```bash
    codex plugin marketplace add /absolute/path/to/extracted-package
