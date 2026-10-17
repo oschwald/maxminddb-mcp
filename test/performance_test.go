@@ -85,6 +85,30 @@ func BenchmarkFilterEngine(b *testing.B) {
 			}
 		})
 	}
+
+	for _, tc := range []struct {
+		name         string
+		field, value any
+	}{
+		{"signed", int64(7922), int32(7000)},
+		{"unsigned", uint32(7922), uint64(7000)},
+		{"float", float32(42.5), float64(40.5)},
+		{"mixed_json", uint32(7922), float64(7000)},
+	} {
+		for _, operator := range []string{"equals", "greater_than"} {
+			b.Run("numeric_"+tc.name+"/"+operator, func(b *testing.B) {
+				engine := filter.New(
+					[]filter.Filter{{Field: "n", Operator: operator, Value: tc.value}},
+					filter.ModeAnd,
+				)
+				record := map[string]any{"n": tc.field}
+				b.ReportAllocs()
+				for b.Loop() {
+					engine.Matches(record)
+				}
+			})
+		}
+	}
 }
 
 func BenchmarkIteratorCreation(b *testing.B) {

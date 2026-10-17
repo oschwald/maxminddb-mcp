@@ -176,13 +176,31 @@ func compareEqual(fieldValue, filterValue any) bool {
 		return true
 	}
 	// Compare exactly so integers above 2^53 do not round to the same value.
-	fieldNumber := exactNumber(fieldValue)
-	filterNumber := exactNumber(filterValue)
-	return fieldNumber != nil && filterNumber != nil && fieldNumber.Cmp(filterNumber) == 0
+	comparison, ok := compareExactNumbers(fieldValue, filterValue)
+	return ok && comparison == 0
 }
 
-func exactNumber(value any) *big.Rat {
-	v := reflect.ValueOf(value)
+func compareExactNumbers(fieldValue, filterValue any) (int, bool) {
+	field, filter := reflect.ValueOf(fieldValue), reflect.ValueOf(filterValue)
+	switch {
+	case field.CanInt() && filter.CanInt():
+		return cmp.Compare(field.Int(), filter.Int()), true
+	case field.Kind() >= reflect.Uint && field.Kind() <= reflect.Uint64 &&
+		filter.Kind() >= reflect.Uint && filter.Kind() <= reflect.Uint64:
+		return cmp.Compare(field.Uint(), filter.Uint()), true
+	case field.CanFloat() && filter.CanFloat():
+		left, right := field.Float(), filter.Float()
+		return cmp.Compare(left, right), !math.IsNaN(left) && !math.IsNaN(right) &&
+			!math.IsInf(left, 0) && !math.IsInf(right, 0)
+	}
+	fieldNumber, filterNumber := exactNumber(field), exactNumber(filter)
+	if fieldNumber == nil || filterNumber == nil {
+		return 0, false
+	}
+	return fieldNumber.Cmp(filterNumber), true
+}
+
+func exactNumber(v reflect.Value) *big.Rat {
 	switch v.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return new(big.Rat).SetInt64(v.Int())
@@ -249,9 +267,8 @@ func compareLessEqual(fieldValue, filterValue any) bool {
 }
 
 func compareNumbers(fieldValue, filterValue any) (int, bool) {
-	fieldNumber, filterNumber := exactNumber(fieldValue), exactNumber(filterValue)
-	if fieldNumber != nil && filterNumber != nil {
-		return fieldNumber.Cmp(filterNumber), true
+	if comparison, ok := compareExactNumbers(fieldValue, filterValue); ok {
+		return comparison, true
 	}
 	// Preserve numeric string coercion and IEEE infinity ordering.
 	fieldFloat, err1 := toFloat64(fieldValue)

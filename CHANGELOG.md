@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Avoid rational-number allocations when comparing integers of the same signedness or finite floating-point values. Preserve exact comparisons for mixed numeric types.
+
 - Test all five supported MCP revisions, modern request metadata, protocol errors, and stdio cancellation reaching active downloads.
 
 - Limit retained iterators to 128 per server. Existing iterators can continue when new queries and token resumes reach the limit.
