@@ -593,3 +593,49 @@ func TestFilterEngineEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestNumericEquality(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		field, value any
+		equal        bool
+	}{
+		{"ASN from JSON", uint64(15169), float64(15169), true},
+		{"signed integer", int32(-42), float64(-42), true},
+		{"integer widths", uint16(42), int64(42), true},
+		{"fraction", uint64(42), 42.5, false},
+		{"negative and unsigned", uint64(42), float64(-42), false},
+		{"large integer", uint64(1<<53 + 1), float64(1 << 53), false},
+		{"uint64 boundary", uint64(1<<64 - 1), float64(1 << 64), false},
+		{"large signed integer", int64(-1<<53 - 1), float64(-1 << 53), false},
+		{"string stays string", uint64(42), "42", false},
+		{"boolean stays boolean", uint64(1), true, false},
+		{"nil", nil, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, op := range []string{"equals", "not_equals", "in", "not_in"} {
+				value := tc.value
+				if op == "in" || op == "not_in" {
+					value = []any{value}
+				}
+				want := tc.equal
+				if op == "not_equals" || op == "not_in" {
+					want = !want
+				}
+				engine := New([]Filter{{Field: "n", Operator: op, Value: value}}, ModeAnd)
+				if got := engine.Matches(map[string]any{"n": tc.field}); got != want {
+					t.Errorf(
+						"%v (%T) %s %v (%T): got %v, want %v",
+						tc.field,
+						tc.field,
+						op,
+						tc.value,
+						tc.value,
+						got,
+						want,
+					)
+				}
+			}
+		})
+	}
+}

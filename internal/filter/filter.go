@@ -3,6 +3,7 @@ package filter
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -155,7 +156,27 @@ func getNestedField(data map[string]any, fieldPath string) any {
 
 // compareEqual compares two values for equality.
 func compareEqual(fieldValue, filterValue any) bool {
-	return reflect.DeepEqual(fieldValue, filterValue)
+	if reflect.DeepEqual(fieldValue, filterValue) {
+		return true
+	}
+	// Compare exactly so integers above 2^53 do not round to the same value.
+	fieldNumber := exactNumber(fieldValue)
+	filterNumber := exactNumber(filterValue)
+	return fieldNumber != nil && filterNumber != nil && fieldNumber.Cmp(filterNumber) == 0
+}
+
+func exactNumber(value any) *big.Rat {
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return new(big.Rat).SetInt64(v.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return new(big.Rat).SetUint64(v.Uint())
+	case reflect.Float32, reflect.Float64:
+		return new(big.Rat).SetFloat64(v.Float())
+	default:
+		return nil
+	}
 }
 
 // containsValue checks if a value is in an array.
