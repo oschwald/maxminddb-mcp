@@ -1,7 +1,9 @@
 package filter
 
 import (
+	"math"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -384,7 +386,7 @@ func TestGetNestedField(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.field, func(t *testing.T) {
-			result := getNestedField(data, test.field)
+			result := getNestedField(data, strings.Split(test.field, "."))
 			if !compareEqual(result, test.expected) {
 				t.Errorf("Expected %v, got %v", test.expected, result)
 			}
@@ -523,8 +525,17 @@ func TestSupportedOperators(t *testing.T) {
 	operators := SupportedOperators()
 
 	expectedOperators := []string{
-		"equals", "not_equals", "in", "not_in", "contains",
-		"regex", "greater_than", "greater_than_or_equal", "less_than", "less_than_or_equal", "exists",
+		"equals",
+		"not_equals",
+		"in",
+		"not_in",
+		"contains",
+		"regex",
+		"greater_than",
+		"greater_than_or_equal",
+		"less_than",
+		"less_than_or_equal",
+		"exists",
 	}
 
 	if len(operators) != len(expectedOperators) {
@@ -580,6 +591,113 @@ func TestFilterEngineEdgeCases(t *testing.T) {
 
 			if matches != test.shouldMatch {
 				t.Errorf("Expected match=%t, got match=%t", test.shouldMatch, matches)
+			}
+		})
+	}
+}
+
+func TestNumericEquality(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		field, value any
+		equal        bool
+	}{
+		{"ASN from JSON", uint64(15169), float64(15169), true},
+		{"signed integer", int32(-42), float64(-42), true},
+		{"integer widths", uint16(42), int64(42), true},
+		{"signed widths", int32(-42), int64(-42), true},
+		{"unsigned widths", uint16(42), uint64(42), true},
+		{"float widths", float32(42.5), float64(42.5), true},
+		{"different signed values", int64(-1), int32(1), false},
+		{"different unsigned values", uint64(1<<64 - 1), uint64(1<<64 - 2), false},
+		{"different floats", float32(42.5), float64(42.25), false},
+		{"float zero signs", math.Copysign(0, -1), float32(0), true},
+		{"NaN", math.NaN(), math.NaN(), false},
+		{"same infinity", math.Inf(1), math.Inf(1), true},
+		{"mixed infinity widths", float32(math.Inf(1)), math.Inf(1), false},
+		{"fraction", uint64(42), 42.5, false},
+		{"negative and unsigned", uint64(42), float64(-42), false},
+		{"large integer", uint64(1<<53 + 1), float64(1 << 53), false},
+		{"uint64 boundary", uint64(1<<64 - 1), float64(1 << 64), false},
+		{"large signed integer", int64(-1<<53 - 1), float64(-1 << 53), false},
+		{"string stays string", uint64(42), "42", false},
+		{"boolean stays boolean", uint64(1), true, false},
+		{"nil", nil, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, op := range []string{"equals", "not_equals", "in", "not_in"} {
+				value := tc.value
+				if op == "in" || op == "not_in" {
+					value = []any{value}
+				}
+				want := tc.equal
+				if op == "not_equals" || op == "not_in" {
+					want = !want
+				}
+				engine := New([]Filter{{Field: "n", Operator: op, Value: value}}, ModeAnd)
+				if got := engine.Matches(map[string]any{"n": tc.field}); got != want {
+					t.Errorf(
+						"%v (%T) %s %v (%T): got %v, want %v",
+						tc.field,
+						tc.field,
+						op,
+						tc.value,
+						tc.value,
+						got,
+						want,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestNumericOrdering(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		field, value any
+		comparison   int
+		valid        bool
+	}{
+		{"equal mixed types", uint32(42), float64(42), 0, true},
+		{"signed widths", int32(-42), int64(42), -1, true},
+		{"unsigned widths", uint16(42), uint64(42), 0, true},
+		{"unsigned adjacent integers", uint64(1<<64 - 1), uint64(1<<64 - 2), 1, true},
+		{"float widths", float32(42.5), float64(42.25), 1, true},
+		{"float zero signs", math.Copysign(0, -1), float32(0), 0, true},
+		{"mixed infinity widths", float32(math.Inf(1)), math.Inf(1), 0, true},
+		{"float NaN", math.NaN(), float32(1), 0, false},
+		{"fraction", uint64(42), 42.5, -1, true},
+		{"large integer", uint64(1<<53 + 1), float64(1 << 53), 1, true},
+		{"uint64 boundary", uint64(1<<64 - 1), float64(1 << 64), -1, true},
+		{"large signed integer", int64(-1<<53 - 1), float64(-1 << 53), -1, true},
+		{"signed and unsigned", int64(-1), uint64(1<<64 - 1), -1, true},
+		{"numeric string", "42.5", uint64(42), 1, true},
+		{"infinity", math.Inf(1), uint64(1<<64 - 1), 1, true},
+		{"negative infinity", math.Inf(-1), int64(-1 << 63), -1, true},
+		{"NaN", math.NaN(), 1, 0, false},
+		{"invalid string", "unknown", 1, 0, false},
+		{"boolean", true, 1, 0, false},
+		{"nil", nil, 1, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, reverse := range []bool{false, true} {
+				field, value, comparison := tc.field, tc.value, tc.comparison
+				if reverse {
+					field, value, comparison = value, field, -comparison
+				}
+				for op, matches := range map[string]bool{
+					"greater_than": comparison > 0, "greater_than_or_equal": comparison >= 0,
+					"less_than": comparison < 0, "less_than_or_equal": comparison <= 0,
+				} {
+					engine := New([]Filter{{Field: "n", Operator: op, Value: value}}, ModeAnd)
+					if got, want := engine.Matches(
+						map[string]any{"n": field},
+					), tc.valid &&
+						matches; got != want {
+						t.Errorf("%v %s %v: got %v, want %v", field, op, value, got, want)
+					}
+				}
 			}
 		})
 	}

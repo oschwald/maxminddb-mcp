@@ -2,11 +2,14 @@
 package iterator
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
+	"math"
 	"net/netip"
 	"strings"
 	"sync"
@@ -17,75 +20,52 @@ import (
 	"github.com/oschwald/maxminddb-golang/v2"
 )
 
+// MaxResults limits the number of records returned in one page.
+const MaxResults = 1000
+
+// MaxIterators limits the retained queries in one manager.
+const MaxIterators = 128
+
+// ErrIteratorLimit means all retained query slots are in use.
+var ErrIteratorLimit = errors.New(
+	"iterator limit reached. Reuse an existing iterator or wait for idle iterators to expire",
+)
+
 // ManagedIterator represents a stateful iterator with metadata.
 type ManagedIterator struct {
-	Created      time.Time
 	LastAccess   time.Time
+	Created      time.Time
+	next         func() (maxminddb.Result, bool)
 	FilterEngine *filter.Engine
 	Reader       *maxminddb.Reader
+	pending      *NetworkResult
+	stop         func()
+	busy         chan struct{}
 	Network      netip.Prefix
 	LastNetwork  netip.Prefix
-	FilterMode   string
-	Database     string
 	ID           string
+	Database     string
+	FilterMode   string
 	Filters      []filter.Filter
 	Processed    int64
 	Matched      int64
-	mu           sync.RWMutex
-}
-
-// getLastNetwork safely gets the LastNetwork field.
-func (iter *ManagedIterator) getLastNetwork() netip.Prefix {
-	iter.mu.RLock()
-	defer iter.mu.RUnlock()
-	return iter.LastNetwork
-}
-
-// setLastNetwork safely sets the LastNetwork field.
-func (iter *ManagedIterator) setLastNetwork(network netip.Prefix) {
-	iter.mu.Lock()
-	defer iter.mu.Unlock()
-	iter.LastNetwork = network
-}
-
-// getProcessedMatched safely gets the Processed and Matched counters.
-func (iter *ManagedIterator) getProcessedMatched() (processed, matched int64) {
-	iter.mu.RLock()
-	defer iter.mu.RUnlock()
-	return iter.Processed, iter.Matched
-}
-
-// updateCounters safely updates the Processed and Matched counters.
-func (iter *ManagedIterator) updateCounters(processed, matched int64) {
-	iter.mu.Lock()
-	defer iter.mu.Unlock()
-	iter.Processed = processed
-	iter.Matched = matched
-}
-
-// incrementProcessed safely increments the Processed counter.
-func (iter *ManagedIterator) incrementProcessed() {
-	iter.mu.Lock()
-	defer iter.mu.Unlock()
-	iter.Processed++
-}
-
-// incrementMatched safely increments the Matched counter.
-func (iter *ManagedIterator) incrementMatched() {
-	iter.mu.Lock()
-	defer iter.mu.Unlock()
-	iter.Matched++
+	exhausted    bool
+	closed       bool
 }
 
 // ResumeToken contains information needed to resume iteration.
 type ResumeToken struct {
-	LastNetwork string          `json:"last_network"`
-	Database    string          `json:"database"`
-	Network     string          `json:"network"`
-	FilterMode  string          `json:"filter_mode"`
-	Filters     []filter.Filter `json:"filters"`
-	Processed   int64           `json:"processed"`
-	Matched     int64           `json:"matched"`
+	DatabaseType string          `json:"database_type"`
+	LastNetwork  string          `json:"last_network"`
+	Database     string          `json:"database"`
+	Network      string          `json:"network"`
+	FilterMode   string          `json:"filter_mode"`
+	Filters      []filter.Filter `json:"filters"`
+	Version      int             `json:"version"`
+	BuildEpoch   uint            `json:"build_epoch"`
+	Processed    int64           `json:"processed"`
+	Matched      int64           `json:"matched"`
+	Exhausted    bool            `json:"exhausted"`
 }
 
 // NetworkResult represents a single network result.
@@ -96,13 +76,12 @@ type NetworkResult struct {
 
 // IterationResult contains the results of an iteration batch.
 type IterationResult struct {
-	IteratorID         string          `json:"iterator_id"`
-	ResumeToken        string          `json:"resume_token"`
-	Results            []NetworkResult `json:"results"`
-	TotalProcessed     int64           `json:"total_processed"`
-	TotalMatched       int64           `json:"total_matched"`
-	EstimatedRemaining int64           `json:"estimated_remaining,omitempty"`
-	HasMore            bool            `json:"has_more"`
+	IteratorID     string          `json:"iterator_id"`
+	ResumeToken    string          `json:"resume_token"`
+	Results        []NetworkResult `json:"results"`
+	TotalProcessed int64           `json:"total_processed"`
+	TotalMatched   int64           `json:"total_matched"`
+	HasMore        bool            `json:"has_more"`
 }
 
 // Manager manages stateful network iterators.
@@ -112,6 +91,7 @@ type Manager struct {
 	ttl             time.Duration
 	cleanupInterval time.Duration
 	mu              sync.RWMutex
+	stopOnce        sync.Once
 }
 
 // New creates a new iterator manager.
@@ -143,7 +123,16 @@ func (m *Manager) StartCleanup() {
 
 // StopCleanup stops the cleanup goroutine.
 func (m *Manager) StopCleanup() {
-	close(m.stopCleanup)
+	m.stopOnce.Do(func() { close(m.stopCleanup) })
+	m.mu.Lock()
+	iterators := m.iterators
+	m.iterators = make(map[string]*ManagedIterator)
+	m.mu.Unlock()
+	for _, iterator := range iterators {
+		iterator.busy <- struct{}{}
+		iterator.close()
+		<-iterator.busy
+	}
 }
 
 // CreateIterator creates a new iterator for a network range.
@@ -154,152 +143,231 @@ func (m *Manager) CreateIterator(
 	filters []filter.Filter,
 	filterMode string,
 ) (*ManagedIterator, error) {
-	iterator, err := m.createIteratorNoStart(reader, database, network, filters, filterMode)
+	iterator, err := m.newIterator(reader, database, network, filters, filterMode)
 	if err != nil {
 		return nil, err
 	}
-	return iterator, nil
+	return m.registerIterator(iterator)
 }
 
 // ResumeIterator creates a new iterator from a resume token.
-func (m *Manager) ResumeIterator(reader *maxminddb.Reader, token string) (*ManagedIterator, error) {
-	// Parse resume token
-	resumeToken, err := m.parseResumeToken(token)
+func (m *Manager) ResumeIterator(
+	reader *maxminddb.Reader,
+	database, token string,
+) (*ManagedIterator, error) {
+	resume, err := m.parseResumeToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("invalid resume token: %w", err)
 	}
-
-	// Parse network
-	network, err := netip.ParsePrefix(resumeToken.Network)
+	if resume.Version != 1 || resume.Database != database || reader == nil ||
+		resume.BuildEpoch != reader.Metadata.BuildEpoch || resume.DatabaseType != reader.Metadata.DatabaseType {
+		return nil, errors.New(
+			"resume token belongs to a different database or version; start a new query",
+		)
+	}
+	network, err := netip.ParsePrefix(resume.Network)
 	if err != nil {
 		return nil, fmt.Errorf("invalid network in resume token: %w", err)
 	}
-
-	// Create iterator from resume token state
-	iterator, err := m.createIteratorNoStart(
-		reader,
-		resumeToken.Database,
-		network,
-		resumeToken.Filters,
-		resumeToken.FilterMode,
-	)
+	var last netip.Prefix
+	if resume.LastNetwork != "" {
+		last, err = netip.ParsePrefix(resume.LastNetwork)
+		if err != nil || last != last.Masked() || !last.Overlaps(network) {
+			return nil, errors.New("invalid last network in resume token")
+		}
+	}
+	if resume.Processed < 0 || resume.Matched < 0 || resume.Matched > resume.Processed ||
+		(resume.Processed > 0) != last.IsValid() {
+		return nil, errors.New("invalid counters in resume token")
+	}
+	iterator, err := m.newIterator(reader, database, network, resume.Filters, resume.FilterMode)
 	if err != nil {
 		return nil, err
 	}
+	iterator.Processed, iterator.Matched = resume.Processed, resume.Matched
+	iterator.LastNetwork, iterator.exhausted = last, resume.Exhausted
+	return m.registerIterator(iterator)
+}
 
-	// Restore state from token
-	iterator.updateCounters(resumeToken.Processed, resumeToken.Matched)
-
-	// Restore last network if available for resume point
-	if resumeToken.LastNetwork != "" {
-		lastNetwork, err := netip.ParsePrefix(resumeToken.LastNetwork)
-		if err != nil {
-			return nil, fmt.Errorf("invalid last network in resume token: %w", err)
-		}
-		iterator.setLastNetwork(lastNetwork)
+func (m *Manager) registerIterator(iterator *ManagedIterator) (*ManagedIterator, error) {
+	m.cleanupExpired()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.iterators) >= MaxIterators {
+		return nil, ErrIteratorLimit
 	}
-
+	m.iterators[iterator.ID] = iterator
 	return iterator, nil
 }
 
-// GetIterator retrieves an existing iterator by ID.
+// GetIterator retrieves an iterator if its idle timeout has not expired.
 func (m *Manager) GetIterator(id string) (*ManagedIterator, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	iterator, exists := m.iterators[id]
-	if exists {
-		iterator.LastAccess = time.Now()
+	if !exists {
+		return nil, false
 	}
-
-	return iterator, exists
+	select {
+	case iterator.busy <- struct{}{}:
+		defer func() { <-iterator.busy }()
+	default:
+		// A running page is active. Its caller refreshes LastAccess when it finishes.
+		return iterator, true
+	}
+	if time.Since(iterator.LastAccess) > m.ttl {
+		iterator.close()
+		delete(m.iterators, id)
+		return nil, false
+	}
+	iterator.LastAccess = time.Now()
+	return iterator, true
 }
 
-// Iterate performs one iteration batch over the reader.
-func (m *Manager) Iterate(iterator *ManagedIterator, maxResults int) (*IterationResult, error) {
+// Iterate returns a page and retains one matching record to detect the end.
+func (m *Manager) Iterate(
+	ctx context.Context,
+	iterator *ManagedIterator,
+	maxResults int,
+	report func(string),
+) (_ *IterationResult, err error) {
 	if iterator == nil {
 		return nil, errors.New("iterator cannot be nil")
 	}
-
-	iterator.LastAccess = time.Now()
-
-	results := make([]NetworkResult, 0, maxResults)
-
-	// Pull results directly from the reader, supporting resume via LastNetwork
-	skipUntil := iterator.getLastNetwork()
-	skipping := skipUntil.IsValid()
-	hasMore := false
-
-	for result := range iterator.Reader.NetworksWithin(iterator.Network) {
-		// Resume point handling: include LastNetwork again for continuity
-		if skipping {
-			if result.Prefix() != skipUntil {
-				continue
-			}
-			skipping = false
+	if maxResults < 1 || maxResults > MaxResults {
+		return nil, fmt.Errorf("max_results must be between 1 and %d", MaxResults)
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case iterator.busy <- struct{}{}:
+	}
+	defer func() { <-iterator.busy }()
+	if iterator.closed {
+		return nil, errors.New("iterator expired; resume with its token or start a new query")
+	}
+	last, processed, matched, exhausted := iterator.LastNetwork, iterator.Processed, iterator.Matched, iterator.exhausted
+	defer func() {
+		iterator.LastAccess = time.Now()
+		if err != nil {
+			// Retry from the last successful page after cancellation or a decode error.
+			iterator.resetCursor()
+			iterator.LastNetwork, iterator.Processed, iterator.Matched, iterator.exhausted = last, processed, matched, exhausted
 		}
-
-		iterator.incrementProcessed()
-
-		// Decode the result data
-		var record map[string]any
-		if err := result.Decode(&record); err != nil {
-			// Skip records that can't be decoded
-			iterator.setLastNetwork(result.Prefix())
-			continue
-		}
-
-		iterator.setLastNetwork(result.Prefix())
-
-		// Apply filters if present
-		if iterator.FilterEngine != nil {
-			if !iterator.FilterEngine.Matches(record) {
-				if len(results) >= maxResults {
-					hasMore = true
-					break
+	}()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if report != nil {
+		report("Scanning " + iterator.Network.String())
+	}
+	if iterator.next == nil && !iterator.exhausted {
+		iterator.next, iterator.stop = iter.Pull(iterator.Reader.NetworksWithin(iterator.Network))
+		if iterator.LastNetwork.IsValid() {
+			found := false
+			var scanned int64
+			for !found {
+				if err := ctx.Err(); err != nil {
+					return nil, err
 				}
-				continue // Skip non-matching records
+				result, ok := iterator.next()
+				if !ok {
+					return nil, errors.New(
+						"resume position is absent from the database; start a new query",
+					)
+				}
+				if err := result.Err(); err != nil {
+					return nil, err
+				}
+				found = result.Prefix() == iterator.LastNetwork
+				scanned++
+				if report != nil && scanned%1024 == 0 {
+					report(fmt.Sprintf("Restoring cursor: %d records scanned", scanned))
+				}
 			}
 		}
-
-		iterator.incrementMatched()
-
-		results = append(results, NetworkResult{
-			Network: result.Prefix(),
-			Data:    record,
-		})
-
-		if len(results) >= maxResults {
-			hasMore = true
+	}
+	results := make([]NetworkResult, 0, maxResults)
+	for !iterator.exhausted {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		record := iterator.pending
+		if record == nil {
+			result, ok := iterator.next()
+			if !ok {
+				iterator.exhausted = true
+				iterator.resetCursor()
+				break
+			}
+			var data map[string]any
+			if err := result.Decode(&data); err != nil {
+				return nil, fmt.Errorf("decode network: %w", err)
+			}
+			record = &NetworkResult{Network: result.Prefix(), Data: data}
+		}
+		matches := iterator.FilterEngine == nil || iterator.FilterEngine.Matches(record.Data)
+		if matches && len(results) == maxResults {
+			iterator.pending = record
 			break
 		}
+		iterator.pending = nil
+		if iterator.Processed == math.MaxInt64 {
+			return nil, errors.New("iterator counter overflow; start a new query")
+		}
+		iterator.Processed++
+		if report != nil && iterator.Processed%1024 == 0 {
+			report(
+				fmt.Sprintf(
+					"Scanning %s: %d records processed",
+					iterator.Network,
+					iterator.Processed,
+				),
+			)
+		}
+		iterator.LastNetwork = record.Network
+		if matches {
+			iterator.Matched++
+			results = append(results, *record)
+		}
 	}
-
-	// Generate resume token
-	resumeToken, err := m.generateResumeToken(iterator)
+	token, err := m.generateResumeToken(iterator)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate resume token: %w", err)
+		return nil, fmt.Errorf("encode resume token: %w", err)
 	}
-
-	totalProcessed, totalMatched := iterator.getProcessedMatched()
-
 	return &IterationResult{
-		Results:            results,
-		IteratorID:         iterator.ID,
-		ResumeToken:        resumeToken,
-		HasMore:            hasMore,
-		TotalProcessed:     totalProcessed,
-		TotalMatched:       totalMatched,
-		EstimatedRemaining: 0,
+		Results:        results,
+		IteratorID:     iterator.ID,
+		ResumeToken:    token,
+		HasMore:        !iterator.exhausted,
+		TotalProcessed: iterator.Processed,
+		TotalMatched:   iterator.Matched,
 	}, nil
+}
+
+func (iterator *ManagedIterator) resetCursor() {
+	if iterator.stop != nil {
+		iterator.stop()
+	}
+	iterator.next, iterator.stop, iterator.pending = nil, nil, nil
+}
+
+func (iterator *ManagedIterator) close() {
+	iterator.resetCursor()
+	iterator.closed = true
 }
 
 // RemoveIterator removes an iterator.
 func (m *Manager) RemoveIterator(id string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	iterator := m.iterators[id]
 	delete(m.iterators, id)
+	m.mu.Unlock()
+	if iterator != nil {
+		iterator.busy <- struct{}{}
+		iterator.close()
+		<-iterator.busy
+	}
 }
 
 // cleanupExpired removes expired iterators.
@@ -309,24 +377,32 @@ func (m *Manager) cleanupExpired() {
 
 	now := time.Now()
 	for id, iterator := range m.iterators {
+		select {
+		case iterator.busy <- struct{}{}:
+		default:
+			continue
+		}
 		if now.Sub(iterator.LastAccess) > m.ttl {
+			iterator.close()
 			delete(m.iterators, id)
 		}
+		<-iterator.busy
 	}
 }
 
 // generateResumeToken creates a resume token from the current iterator state.
 func (*Manager) generateResumeToken(iterator *ManagedIterator) (string, error) {
-	processed, matched := iterator.getProcessedMatched()
-	lastNetwork := iterator.getLastNetwork()
+	lastNetwork := iterator.LastNetwork
 
 	token := ResumeToken{
+		Version: 1, BuildEpoch: iterator.Reader.Metadata.BuildEpoch,
+		DatabaseType: iterator.Reader.Metadata.DatabaseType, Exhausted: iterator.exhausted,
 		Database:   iterator.Database,
 		Network:    iterator.Network.String(),
 		Filters:    iterator.Filters,
 		FilterMode: iterator.FilterMode,
-		Processed:  processed,
-		Matched:    matched,
+		Processed:  iterator.Processed,
+		Matched:    iterator.Matched,
 	}
 
 	if lastNetwork.IsValid() {
@@ -343,6 +419,9 @@ func (*Manager) generateResumeToken(iterator *ManagedIterator) (string, error) {
 
 // parseResumeToken parses a resume token.
 func (*Manager) parseResumeToken(tokenStr string) (*ResumeToken, error) {
+	if len(tokenStr) > 1024*1024 {
+		return nil, errors.New("resume token exceeds 1 MiB")
+	}
 	data, err := base64.StdEncoding.DecodeString(tokenStr)
 	if err != nil {
 		return nil, err
@@ -356,16 +435,25 @@ func (*Manager) parseResumeToken(tokenStr string) (*ResumeToken, error) {
 	return &token, nil
 }
 
-// createIteratorNoStart creates a new iterator without any background goroutines.
-func (m *Manager) createIteratorNoStart(
+// newIterator validates a query before it is registered.
+func (*Manager) newIterator(
 	reader *maxminddb.Reader,
 	database string,
 	network netip.Prefix,
 	filters []filter.Filter,
 	filterMode string,
 ) (*ManagedIterator, error) {
-	// Normalize filter mode to "and" or "or", default to "and"
-	normalizedMode := normalizeFilterMode(filterMode)
+	if reader == nil || !network.IsValid() {
+		return nil, errors.New("a reader and valid network are required")
+	}
+	normalizedMode := strings.ToLower(filterMode)
+	if normalizedMode == "" {
+		normalizedMode = "and"
+	}
+	if normalizedMode != "and" && normalizedMode != "or" {
+		return nil, errors.New("filter_mode must be and or or")
+	}
+	network = network.Masked()
 
 	// Create filter engine
 	var filterEngine *filter.Engine
@@ -375,6 +463,9 @@ func (m *Manager) createIteratorNoStart(
 		for _, f := range filters {
 			f.Operator = normalizeOperator(f.Operator)
 			norm = append(norm, f)
+		}
+		if err := filter.Validate(norm); err != nil {
+			return nil, err
 		}
 		filterEngine = filter.New(norm, filter.Mode(normalizedMode))
 		filters = norm
@@ -388,6 +479,7 @@ func (m *Manager) createIteratorNoStart(
 
 	iterator := &ManagedIterator{
 		ID:           id,
+		busy:         make(chan struct{}, 1),
 		Reader:       reader,
 		Database:     database,
 		Network:      network,
@@ -397,10 +489,6 @@ func (m *Manager) createIteratorNoStart(
 		Created:      time.Now(),
 		LastAccess:   time.Now(),
 	}
-
-	m.mu.Lock()
-	m.iterators[id] = iterator
-	m.mu.Unlock()
 
 	return iterator, nil
 }
@@ -412,16 +500,6 @@ func generateID() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
-}
-
-// normalizeFilterMode normalizes filter mode to "and" or "or", defaulting to "and".
-func normalizeFilterMode(mode string) string {
-	switch strings.ToLower(mode) {
-	case string(filter.ModeOr):
-		return string(filter.ModeOr)
-	default:
-		return string(filter.ModeAnd) // Default to "and" for unknown or "and" values
-	}
 }
 
 // normalizeOperator maps common aliases to canonical operator names used by the filter engine.

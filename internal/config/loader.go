@@ -1,11 +1,13 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -16,7 +18,7 @@ func Paths() []string {
 
 	// 1. Environment variable (standardized for this project name)
 	if configPath := os.Getenv("MAXMINDDB_MCP_CONFIG"); configPath != "" {
-		paths = append(paths, configPath)
+		return []string{configPath}
 	}
 
 	// 2. User config directory
@@ -45,8 +47,11 @@ func Load() (*Config, error) {
 
 	// Try each config path
 	for _, path := range configPaths {
-		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-			continue
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, fs.ErrNotExist) && os.Getenv("MAXMINDDB_MCP_CONFIG") == "" {
+				continue
+			}
+			return nil, fmt.Errorf("read configuration %s: %w", path, err)
 		}
 
 		// Determine config type by extension
@@ -60,7 +65,10 @@ func Load() (*Config, error) {
 				return nil, fmt.Errorf("failed to load GeoIP.conf from %s: %w", path, err)
 			}
 		default:
-			continue
+			return nil, fmt.Errorf(
+				"unsupported configuration file %s: use a .toml file or GeoIP.conf",
+				path,
+			)
 		}
 
 		foundConfig = true
@@ -94,7 +102,47 @@ func loadTOMLConfig(path string, config *Config) error {
 		return err
 	}
 
-	return toml.Unmarshal(data, config)
+	if err := toml.NewDecoder(bytes.NewReader(data)).
+		DisallowUnknownFields().
+		Decode(config); err != nil {
+		var missing *toml.StrictMissingError
+		if errors.As(err, &missing) {
+			fields := make([]string, len(missing.Errors))
+			for i, field := range missing.Errors {
+				fields[i] = strings.Join(field.Key(), ".")
+			}
+			return fmt.Errorf("unknown TOML settings %s: %w", strings.Join(fields, ", "), err)
+		}
+		return err
+	}
+	if config.Mode != ModeGeoIPCompat {
+		return nil
+	}
+	if err := config.ExpandPaths(); err != nil {
+		return err
+	}
+	paths := DefaultGeoIPPaths()
+	if config.GeoIPCompat.ConfigPath != "" {
+		paths = []string{config.GeoIPCompat.ConfigPath}
+	}
+	overrideDir := config.GeoIPCompat.DatabaseDir
+	for _, geoipPath := range paths {
+		if _, err := os.Stat(
+			geoipPath,
+		); errors.Is(err, fs.ErrNotExist) &&
+			config.GeoIPCompat.ConfigPath == "" {
+			continue
+		}
+		if err := loadGeoIPConfig(geoipPath, config); err != nil {
+			return fmt.Errorf("load GeoIP.conf %s: %w", geoipPath, err)
+		}
+		if overrideDir != "" {
+			config.MaxMind.DatabaseDir = overrideDir
+		}
+		config.GeoIPCompat.DatabaseDir = config.MaxMind.DatabaseDir
+		return nil
+	}
+	return errors.New("geoip_compat requires a GeoIP.conf file; set geoip_compat.config_path")
 }
 
 // SaveTOMLConfig saves configuration to a TOML file.

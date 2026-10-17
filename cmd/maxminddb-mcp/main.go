@@ -3,7 +3,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -44,77 +46,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create database manager
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
+		slog.Error("Server failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, cfg *config.Config, input io.Reader, output io.Writer) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	dbManager, err := database.New()
 	if err != nil {
-		slog.Error("Failed to create database manager", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("create database manager: %w", err)
 	}
-
-	// Initialize databases based on mode
+	defer func() { _ = dbManager.Close() }()
 	if err := initializeDatabases(cfg, dbManager); err != nil {
-		slog.Error("Failed to initialize databases", "err", err)
-		os.Exit(1)
+		return err
 	}
-
-	// Create updater if needed
 	var updater *database.Updater
 	if cfg.Mode == config.ModeMaxMind || cfg.Mode == config.ModeGeoIPCompat {
 		updater, err = database.NewUpdater(cfg, dbManager)
 		if err != nil {
-			slog.Warn("Failed to create updater", "err", err)
+			return fmt.Errorf("create updater: %w", err)
 		}
 	}
-
-	// Create iterator manager
-	iterMgr := iterator.New(
-		cfg.IteratorTTLDuration,
-		cfg.IteratorCleanupIntervalDuration,
-	)
+	iterMgr := iterator.New(cfg.IteratorTTLDuration, cfg.IteratorCleanupIntervalDuration)
 	iterMgr.StartCleanup()
 	defer iterMgr.StopCleanup()
-
-	// Create context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Check if databases need initial update
-	if updater != nil && len(dbManager.ListDatabases()) == 0 {
-		slog.Info("No databases found, triggering initial update...")
-		if _, err := updater.UpdateAll(ctx); err != nil {
-			slog.Warn("Initial database update failed", "err", err)
-		}
-	}
-
-	// Start scheduled updates if configured
-	if updater != nil {
-		updater.StartScheduledUpdates(ctx)
-	}
-
-	// Start file watcher
 	dbManager.StartWatching()
-
-	// Handle graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		slog.Info("Shutting down...")
-		cancel()
-	}()
-
-	// Log startup summary
-	logStartupSummary(cfg, dbManager, updater != nil)
-
-	// Create and start MCP server (blocks until client disconnects)
-	server := mcp.New(cfg, dbManager, updater, iterMgr)
-	err = server.Serve()
-	cancel() // Always call cancel before exiting
-	if err != nil {
-		slog.Error("Server error", "err", err)
-		return // Let main() exit naturally, defers will run
+	if updater != nil {
+		done := make(chan struct{})
+		go func() { defer close(done); updater.RunUpdates(ctx) }()
+		defer func() { cancel(); <-done }()
 	}
+	logStartupSummary(cfg, dbManager, updater != nil && cfg.AutoUpdate)
+	return mcp.New(cfg, dbManager, updater, iterMgr, version).Serve(ctx, input, output)
 }
 
 // printHelp displays usage information.

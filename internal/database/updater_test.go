@@ -1,389 +1,496 @@
 package database
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/md5" //nolint:gosec // The update API uses MD5 for file integrity.
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/maxmind/geoipupdate/v8/client"
 	"github.com/oschwald/maxminddb-mcp/internal/config"
 )
 
-func TestNewUpdater(t *testing.T) {
-	// Test with maxmind mode
-	cfg := &config.Config{
-		Mode: "maxmind",
-		MaxMind: config.MaxMindConfig{
-			AccountID:   123456,
-			LicenseKey:  "test_license_key",
-			Editions:    []string{"GeoLite2-City"},
-			DatabaseDir: t.TempDir(),
-			Endpoint:    "https://updates.maxmind.com",
-		},
-	}
-
+func testUpdater(t *testing.T, handler http.Handler) *Updater {
+	t.Helper()
+	endpoint := httptest.NewServer(handler)
+	t.Cleanup(endpoint.Close)
 	manager, err := New()
 	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
+		t.Fatal(err)
 	}
-	defer func() { _ = manager.Close() }()
-
+	t.Cleanup(func() { _ = manager.Close() })
+	cfg := config.DefaultConfig()
+	cfg.MaxMind.AccountID = 1
+	cfg.MaxMind.LicenseKey = "test"
+	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
+	cfg.MaxMind.DatabaseDir = t.TempDir()
+	cfg.MaxMind.Endpoint = endpoint.URL
 	updater, err := NewUpdater(cfg, manager)
 	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
+		t.Fatal(err)
 	}
+	return updater
+}
 
-	if updater == nil {
-		t.Fatal("Updater should not be nil")
+func downloadHandler(
+	t *testing.T,
+	data []byte,
+	checksum string,
+	downloads *atomic.Int32,
+) http.Handler {
+	t.Helper()
+	var archive bytes.Buffer
+	gz := gzip.NewWriter(&archive)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(
+		&tar.Header{Name: "test/GeoLite2-ASN.mmdb", Mode: 0o600, Size: int64(len(data))},
+	); err != nil {
+		t.Fatal(err)
 	}
-
-	if updater.config != cfg {
-		t.Error("Updater config should match input config")
+	if _, err := tw.Write(data); err != nil {
+		t.Fatal(err)
 	}
-
-	if updater.manager != manager {
-		t.Error("Updater manager should match input manager")
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
 	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/metadata") {
+			if err := json.NewEncoder(w).
+				Encode(map[string]any{"databases": []map[string]string{{"edition_id": "GeoLite2-ASN", "md5": checksum, "date": "2026-10-01"}}}); err != nil {
+				t.Error(err)
+			}
+			return
+		}
+		downloads.Add(1)
+		w.Header().Set("Last-Modified", "Thu, 01 Oct 2026 00:00:00 GMT")
+		if _, err := w.Write(archive.Bytes()); err != nil {
+			t.Error(err)
+		}
+	})
+}
 
-	// Test with geoip_compat mode
-	cfg.Mode = "geoip_compat"
-	updater2, err := NewUpdater(cfg, manager)
+func TestUpdateRepairsMissingAndChangedFiles(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
 	if err != nil {
-		t.Fatalf("Failed to create updater with geoip_compat mode: %v", err)
+		t.Fatal(err)
 	}
-	if updater2 == nil {
-		t.Error("Updater should not be nil for geoip_compat mode")
+	sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+	checksum := hex.EncodeToString(sum[:])
+	var downloads atomic.Int32
+	updater := testUpdater(t, downloadHandler(t, data, checksum, &downloads))
+	dir := updater.config.MaxMind.DatabaseDir
+	// A leftover checksum must not suppress a missing database download.
+	if err := os.WriteFile( //nolint:gosec // The directory comes from t.TempDir.
+		filepath.Join(dir, ".checksums"),
+		[]byte("GeoLite2-ASN:"+checksum+"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
 	}
-
-	// Test with unsupported mode
-	cfg.Mode = "directory"
-	_, err = NewUpdater(cfg, manager)
-	if err == nil {
-		t.Error("Expected error for unsupported mode")
+	for _, action := range []string{"missing", "unchanged", "unloaded", "stale", "deleted", "corrupted"} {
+		path := filepath.Join(dir, "GeoLite2-ASN.mmdb")
+		switch action {
+		case "unloaded":
+			updater.manager.RemoveDatabase("GeoLite2-ASN.mmdb")
+		case "stale":
+			old, err := os.ReadFile(testDBPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, content := range [][]byte{old, data} {
+				temporary := filepath.Join(dir, "replacement.tmp")
+				//nolint:gosec // The directory comes from t.TempDir.
+				if err := os.WriteFile(temporary, content, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(temporary, path); err != nil {
+					t.Fatal(err)
+				}
+				if bytes.Equal(content, old) {
+					if err := updater.manager.LoadDatabase(path); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		case "deleted":
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		case "corrupted":
+			if err := os.WriteFile(path, []byte("bad database"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		before, _ := updater.manager.GetReader("GeoLite2-ASN.mmdb")
+		var messages []string
+		results, err := updater.UpdateAll(
+			t.Context(),
+			func(message string) { messages = append(messages, message) },
+		)
+		if err != nil || len(results) != 1 || results[0].Error != "" {
+			t.Fatalf("%s: %+v, %v", action, results, err)
+		}
+		wantDownload := action == "missing" || action == "deleted" || action == "corrupted"
+		if results[0].Updated != wantDownload {
+			t.Fatalf("%s: wrong updated flag", action)
+		}
+		if len(messages) == 0 || messages[0] != "Checking GeoLite2-ASN" ||
+			slices.Contains(messages, "Validating GeoLite2-ASN") != wantDownload {
+			t.Fatalf("%s: unexpected progress: %v", action, messages)
+		}
+		installed, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(installed, data) {
+			t.Fatalf("%s: installed file differs: %v", action, err)
+		}
+		after, ok := updater.manager.GetReader("GeoLite2-ASN.mmdb")
+		if !ok || after.Metadata.DatabaseType != "GeoLite2-ASN" {
+			t.Fatalf("%s: current database was not loaded", action)
+		}
+		if action == "unchanged" && after != before {
+			t.Fatal("unchanged update replaced its reader")
+		}
 	}
-
-	// Test with invalid credentials (should still create updater but fail on actual updates)
-	cfg.Mode = "maxmind"
-	cfg.MaxMind.AccountID = 0
-	_, err = NewUpdater(cfg, manager)
-	if err == nil {
-		t.Error("Expected error for invalid account ID")
+	if downloads.Load() != 3 {
+		t.Fatalf("got %d downloads, want 3", downloads.Load())
 	}
 }
 
-func TestUpdateAll(t *testing.T) {
-	// Create a mock updater with minimal config for testing
-	cfg := createTestConfig(t)
-	manager, err := New()
-	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
-	}
-	defer func() { _ = manager.Close() }()
-
-	// Note: This test will fail with network errors since we're using test credentials
-	// But we can test the structure and error handling
-	updater, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	results, err := updater.UpdateAll(ctx)
-	// We expect this to fail with network/auth errors, but not panic
-	if err != nil {
-		t.Logf("Expected failure due to test credentials: %v", err)
-	}
-
-	// Results should still be returned even on failure
-	if results == nil {
-		t.Error("Results should not be nil even on failure")
-	}
-
-	// Should have results for each edition
-	expectedCount := len(cfg.MaxMind.Editions)
-	if len(results) != expectedCount {
-		t.Errorf("Expected %d results, got %d", expectedCount, len(results))
-	}
-
-	// Each result should have the database name set
-	for _, result := range results {
-		if result.Database == "" {
-			t.Error("Result should have database name set")
+func TestDownloadProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var messages []string
+		progress := &downloadProgress{
+			edition: "GeoLite2-ASN",
+			report:  func(message string) { messages = append(messages, message) },
 		}
+		for i := range 3 {
+			if i == 2 {
+				time.Sleep(time.Second)
+			}
+			if n, err := progress.Write(make([]byte, 100)); n != 100 || err != nil {
+				t.Fatalf("progress writer: %d, %v", n, err)
+			}
+		}
+		if !slices.Equal(messages, []string{
+			"Downloading GeoLite2-ASN: 100 bytes received",
+			"Downloading GeoLite2-ASN: 300 bytes received",
+		}) {
+			t.Fatalf("unexpected download progress: %v", messages)
+		}
+	})
+}
+
+func TestBadDownloadPreservesInstalledFile(t *testing.T) {
+	for _, validChecksum := range []bool{false, true} {
+		checksum := "wrong checksum"
+		data := []byte("not an mmdb")
+		if validChecksum {
+			sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+			checksum = hex.EncodeToString(sum[:])
+		}
+		var downloads atomic.Int32
+		updater := testUpdater(t, downloadHandler(t, data, checksum, &downloads))
+		path := filepath.Join(updater.config.MaxMind.DatabaseDir, "GeoLite2-ASN.mmdb")
+		original, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+		if err != nil {
+			t.Fatal(err)
+		}
+		//nolint:gosec // The directory comes from t.TempDir.
+		if err := os.WriteFile(
+			path,
+			original,
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+		result, err := updater.UpdateDatabase(t.Context(), "GeoLite2-ASN")
+		if err != nil || result.Error == "" || result.Updated {
+			t.Fatalf("bad download accepted: %+v, %v", result, err)
+		}
+		installed, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(installed, original) {
+			t.Fatal("bad download replaced installed file")
+		}
+		temporary, err := filepath.Glob(filepath.Join(updater.config.MaxMind.DatabaseDir, "*.tmp"))
+		if err != nil || len(temporary) != 0 {
+			t.Fatalf("temporary files left: %v %v", temporary, err)
+		}
+	}
+}
+
+func TestDownloadCancellation(t *testing.T) {
+	started := make(chan struct{})
+	updater := testUpdater(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan UpdateResult, 1)
+	go func() { result, _ := updater.UpdateDatabase(ctx, "GeoLite2-ASN"); done <- result }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("download did not start")
+	}
+	cancel()
+	select {
+	case result := <-done:
 		if result.Error == "" {
-			t.Log("Unexpected success - this might indicate the test credentials work")
+			t.Fatal("canceled download reported success")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("download ignored cancellation")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestUpdateAllowsSlowDownload(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+	var downloads atomic.Int32
+	handler := downloadHandler(t, data, hex.EncodeToString(sum[:]), &downloads)
+	updater := testUpdater(t, http.NotFoundHandler())
+	mclient, err := client.New(1, "test", client.WithHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if strings.HasSuffix(request.URL.Path, "/download") {
+				select {
+				case <-time.After(6 * time.Minute):
+				case <-request.Context().Done():
+					return nil, request.Context().Err()
+				}
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			return response.Result(), nil
+		}),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updater.client = &mclient
+	synctest.Test(t, func(t *testing.T) {
+		result, err := updater.UpdateDatabase(t.Context(), "GeoLite2-ASN")
+		if err != nil || result.Error != "" || !result.Updated {
+			t.Fatalf("slow download failed: %+v, %v", result, err)
+		}
+		if len(updater.manager.ListDatabases()) != 1 {
+			t.Fatal("downloaded database was not loaded")
+		}
+	})
+}
+
+func TestUpdateAcrossProcesses(t *testing.T) {
+	if dir := os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_DIR"); dir != "" {
+		manager, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = manager.Close() }()
+		cfg := config.DefaultConfig()
+		cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
+		cfg.MaxMind.DatabaseDir = dir
+		cfg.MaxMind.Endpoint = os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_ENDPOINT")
+		updater, err := NewUpdater(cfg, manager)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := t.Context()
+		blocked := os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_BLOCKED") == "true"
+		if blocked {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, 200*time.Millisecond)
+			defer cancel()
+		}
+		result, err := updater.UpdateDatabase(ctx, "GeoLite2-ASN")
+		if err != nil || result.Updated {
+			t.Fatalf("unexpected update: %+v, %v", result, err)
+		}
+		if blocked {
+			if !strings.Contains(result.Error, "lock database update: context deadline exceeded") {
+				t.Fatalf("expected cancellation while waiting for lock: %+v", result)
+			}
+		} else if result.Error != "" || len(manager.ListDatabases()) != 1 {
+			t.Fatalf("installed database was not loaded: %+v", result)
+		}
+		return
+	}
+
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+	var downloads atomic.Int32
+	handler := downloadHandler(t, data, hex.EncodeToString(sum[:]), &downloads)
+	started, release := make(chan struct{}), make(chan struct{})
+	updater := testUpdater(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/metadata") {
+			select {
+			case started <- struct{}{}:
+			case <-r.Context().Done():
+				return
+			}
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	finished := make(chan UpdateResult, 1)
+	go func() { result, _ := updater.UpdateDatabase(ctx, "GeoLite2-ASN"); finished <- result }()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("first download did not start")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runChild := func(blocked bool) {
+		t.Helper()
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^TestUpdateAcrossProcesses$")
+		cmd.Env = append(os.Environ(),
+			"MAXMINDDB_MCP_TEST_UPDATE_DIR="+updater.config.MaxMind.DatabaseDir,
+			"MAXMINDDB_MCP_TEST_UPDATE_ENDPOINT="+updater.config.MaxMind.Endpoint,
+			fmt.Sprintf("MAXMINDDB_MCP_TEST_UPDATE_BLOCKED=%t", blocked),
+		)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("child updater: %v\n%s", err, output)
 		}
 	}
+	runChild(true)
+	close(release)
+	result := <-finished
+	if result.Error != "" || !result.Updated {
+		t.Fatalf("first update failed: %+v", result)
+	}
+	runChild(false)
+	if downloads.Load() != 1 {
+		t.Fatalf("got %d downloads, want 1", downloads.Load())
+	}
 }
 
-func TestUpdateDatabase(t *testing.T) {
-	cfg := createTestConfig(t)
-	manager, err := New()
-	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
-	}
-	defer func() { _ = manager.Close() }()
-
-	updater, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func TestQueuedUpdateCancellation(t *testing.T) {
+	started := make(chan struct{})
+	updater := testUpdater(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-
-	edition := "GeoLite2-City"
-	result, err := updater.UpdateDatabase(ctx, edition)
-	// We expect this to fail with network/auth errors, but not panic
-	if err != nil {
-		t.Logf("Expected failure due to test credentials: %v", err)
+	active := make(chan struct{})
+	go func() { _, _ = updater.UpdateAll(ctx, nil); close(active) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first update did not start")
 	}
-
-	if result.Database != edition {
-		t.Errorf("Expected result database to be %s, got %s", edition, result.Database)
-	}
-
-	if result.Error == "" {
-		t.Log("Unexpected success - this might indicate the test credentials work")
-	}
-}
-
-func TestStartScheduledUpdates(t *testing.T) {
-	// Test with auto-update enabled
-	cfg := createTestConfig(t)
-	cfg.AutoUpdate = true
-	cfg.UpdateInterval = "1h"
-	cfg.UpdateIntervalDuration = time.Hour
-
-	manager, err := New()
-	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
-	}
-	defer func() { _ = manager.Close() }()
-
-	updater, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	// This should start the scheduled updates goroutine
-	updater.StartScheduledUpdates(ctx)
-
-	// Give it a moment to start
-	time.Sleep(10 * time.Millisecond)
-
-	// Test with auto-update disabled
-	cfg.AutoUpdate = false
-	updater2, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	// This should return immediately
-	updater2.StartScheduledUpdates(ctx)
-}
-
-func TestLoadChecksums(t *testing.T) {
-	cfg := createTestConfig(t)
-	manager, err := New()
-	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
-	}
-	defer func() { _ = manager.Close() }()
-
-	updater, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	// Create a test checksum file
-	checksumFile := filepath.Join(cfg.MaxMind.DatabaseDir, ".checksums")
-	checksumContent := "GeoLite2-City:abcd1234\nGeoLite2-Country:efgh5678\n"
-
-	err = os.WriteFile(checksumFile, []byte(checksumContent), 0o600)
-	if err != nil {
-		t.Fatalf("Failed to write checksum file: %v", err)
-	}
-
-	// Load checksums
-	updater.loadChecksums()
-
-	// Verify checksums were loaded
-	updater.mu.RLock()
-	if len(updater.checksums) != 2 {
-		t.Errorf("Expected 2 checksums, got %d", len(updater.checksums))
-	}
-
-	if updater.checksums["GeoLite2-City"] != "abcd1234" {
-		t.Errorf("Expected checksum 'abcd1234', got '%s'", updater.checksums["GeoLite2-City"])
-	}
-
-	if updater.checksums["GeoLite2-Country"] != "efgh5678" {
-		t.Errorf("Expected checksum 'efgh5678', got '%s'", updater.checksums["GeoLite2-Country"])
-	}
-	updater.mu.RUnlock()
-}
-
-func TestSaveChecksums(t *testing.T) {
-	cfg := createTestConfig(t)
-	manager, err := New()
-	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
-	}
-	defer func() { _ = manager.Close() }()
-
-	updater, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	// Set some test checksums
-	updater.mu.Lock()
-	updater.checksums["GeoLite2-City"] = "test1234"
-	updater.checksums["GeoLite2-Country"] = "test5678"
-	updater.mu.Unlock()
-
-	// Save checksums
-	updater.saveChecksums()
-
-	// Verify file was created
-	checksumFile := filepath.Join(cfg.MaxMind.DatabaseDir, ".checksums")
-	if _, err := os.Stat(checksumFile); errors.Is(err, os.ErrNotExist) {
-		t.Error("Checksum file should have been created")
-	}
-
-	// Verify content
-	content, err := os.ReadFile(checksumFile)
-	if err != nil {
-		t.Fatalf("Failed to read checksum file: %v", err)
-	}
-
-	contentStr := string(content)
-	if !contains(contentStr, "GeoLite2-City:test1234") {
-		t.Error("Checksum file should contain GeoLite2-City checksum")
-	}
-	if !contains(contentStr, "GeoLite2-Country:test5678") {
-		t.Error("Checksum file should contain GeoLite2-Country checksum")
-	}
-}
-
-func TestUpdateResult(t *testing.T) {
-	// Test UpdateResult struct
-	result := UpdateResult{
-		LastUpdate: time.Now(),
-		Database:   "GeoLite2-City",
-		Error:      "",
-		Size:       12345,
-		Updated:    true,
-	}
-
-	if result.Database != "GeoLite2-City" {
-		t.Error("Database field not set correctly")
-	}
-
-	if result.LastUpdate.IsZero() {
-		t.Error("LastUpdate field should be set")
-	}
-
-	if result.Size != 12345 {
-		t.Error("Size field not set correctly")
-	}
-
-	if !result.Updated {
-		t.Error("Updated field should be true")
-	}
-
-	if result.Error != "" {
-		t.Error("Error field should be empty")
-	}
-
-	// Test with error
-	result.Error = "Test error"
-	result.Updated = false
-
-	if result.Error != "Test error" {
-		t.Error("Error field not set correctly")
-	}
-
-	if result.Updated {
-		t.Error("Updated field should be false when there's an error")
-	}
-}
-
-func TestUpdaterConcurrency(t *testing.T) {
-	cfg := createTestConfig(t)
-	manager, err := New()
-	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
-	}
-	defer func() { _ = manager.Close() }()
-
-	updater, err := NewUpdater(cfg, manager)
-	if err != nil {
-		t.Fatalf("Failed to create updater: %v", err)
-	}
-
-	// Test concurrent access to checksums
-	done := make(chan bool, 2)
-
-	go func() {
-		updater.mu.Lock()
-		updater.checksums["test1"] = "hash1"
-		updater.mu.Unlock()
-		done <- true
-	}()
-
-	go func() {
-		updater.mu.RLock()
-		_ = updater.checksums["test1"]
-		updater.mu.RUnlock()
-		done <- true
-	}()
-
-	<-done
-	<-done
-
-	// Should not deadlock or panic
-}
-
-// Helper functions
-
-func createTestConfig(t *testing.T) *config.Config {
-	return &config.Config{
-		Mode: "maxmind",
-		MaxMind: config.MaxMindConfig{
-			AccountID:   999999, // Test account ID that will fail
-			LicenseKey:  "test_license_key",
-			Editions:    []string{"GeoLite2-City", "GeoLite2-Country"},
-			DatabaseDir: t.TempDir(),
-			Endpoint:    "https://updates.maxmind.com",
-		},
-		AutoUpdate:             false,
-		UpdateInterval:         "24h",
-		UpdateIntervalDuration: 24 * time.Hour,
-	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			s[:len(substr)] == substr ||
-			s[len(s)-len(substr):] == substr ||
-			containsMiddle(s, substr))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+	for _, all := range []bool{false, true} {
+		queued, stop := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() {
+			if all {
+				_, err := updater.UpdateAll(queued, nil)
+				done <- err
+			} else {
+				_, err := updater.UpdateDatabase(queued, "GeoLite2-ASN")
+				done <- err
+			}
+		}()
+		stop()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("got %v, want cancellation", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("queued update ignored cancellation")
 		}
 	}
-	return false
+	cancel()
+	<-active
+}
+
+func TestStartupUpdateCheck(t *testing.T) {
+	for _, installed := range []bool{false, true} {
+		for _, autoUpdate := range []bool{false, true} {
+			t.Run(
+				fmt.Sprintf("installed=%t/auto_update=%t", installed, autoUpdate),
+				func(t *testing.T) {
+					requested := make(chan struct{}, 1)
+					updater := testUpdater(
+						t,
+						http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+							requested <- struct{}{}
+							http.Error(w, "test endpoint", http.StatusUnauthorized)
+						}),
+					)
+					if installed {
+						// An installed database must not suppress checks for a missing configured edition.
+						if err := updater.manager.LoadDatabase(
+							"../../testdata/test-data/GeoIP2-City-Test.mmdb",
+						); err != nil {
+							t.Fatal(err)
+						}
+					}
+					updater.config.AutoUpdate = autoUpdate
+					updater.config.UpdateIntervalDuration = time.Hour
+					ctx, cancel := context.WithCancel(t.Context())
+					defer cancel()
+					done := make(chan struct{})
+					go func() { updater.RunUpdates(ctx); close(done) }()
+					if autoUpdate {
+						select {
+						case <-requested:
+						case <-time.After(5 * time.Second):
+							t.Fatal("startup update check did not run")
+						}
+						cancel()
+					}
+					select {
+					case <-done:
+					case <-time.After(5 * time.Second):
+						t.Fatal("update loop did not stop")
+					}
+					if !autoUpdate && (len(requested) > 0) != !installed {
+						t.Fatal(
+							"automatic updates disabled: only an empty installation should download",
+						)
+					}
+				},
+			)
+		}
+	}
 }

@@ -1,9 +1,14 @@
 package database
 
 import (
+	"net/netip"
 	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
+
+	"github.com/oschwald/maxminddb-golang/v2"
 )
 
 const (
@@ -257,8 +262,8 @@ func TestListDatabases(t *testing.T) {
 	if db.Name != testDBName {
 		t.Errorf("Expected database name 'GeoLite2-City-Test.mmdb', got '%s'", db.Name)
 	}
-	if db.Type != "City" {
-		t.Errorf("Expected database type 'City', got '%s'", db.Type)
+	if db.Type != "GeoLite2-City" {
+		t.Errorf("Expected database type 'GeoLite2-City', got '%s'", db.Type)
 	}
 	if db.Size <= 0 {
 		t.Errorf("Expected positive database size, got %d", db.Size)
@@ -288,67 +293,6 @@ func TestClose(t *testing.T) {
 	err = manager.Close()
 	if err != nil {
 		t.Errorf("Second close should not error: %v", err)
-	}
-}
-
-func TestInferDatabaseType(t *testing.T) {
-	tests := []struct {
-		filename string
-		expected string
-	}{
-		{testDBName, "City"},
-		{"GeoLite2-Country-Test.mmdb", "Country"},
-		{"GeoLite2-ASN-Test.mmdb", "ASN"},
-		{"GeoIP2-City-Test.mmdb", "City"},
-		{"GeoIP2-Country-Test.mmdb", "Country"},
-		{"GeoIP2-Enterprise-Test.mmdb", "Enterprise"},
-		{"GeoIP2-ISP-Test.mmdb", "ISP"},
-		{"GeoIP2-Domain-Test.mmdb", "Domain"},
-		{"GeoIP2-Connection-Type-Test.mmdb", "Connection Type"},
-		{"GeoIP2-Anonymous-IP-Test.mmdb", "Anonymous IP"},
-		{"unknown-database.mmdb", "Unknown"},
-		{"test.mmdb", "Unknown"},
-	}
-
-	for _, test := range tests {
-		result := inferDatabaseType(test.filename)
-		if result != test.expected {
-			t.Errorf(
-				"inferDatabaseType(%s) = %s, expected %s",
-				test.filename,
-				result,
-				test.expected,
-			)
-		}
-	}
-}
-
-func TestGetDatabaseDescription(t *testing.T) {
-	tests := []struct {
-		dbType   string
-		expected string
-	}{
-		{"City", "IP geolocation with city-level precision"},
-		{"Country", "IP geolocation with country-level precision"},
-		{"ASN", "Autonomous system number and organization"},
-		{"Enterprise", "Enterprise-level IP intelligence"},
-		{"ISP", "Internet service provider information"},
-		{"Domain", "Domain name information"},
-		{"Connection Type", "Connection type classification"},
-		{"Anonymous IP", "Anonymous proxy and VPN detection"},
-		{"Unknown", "MaxMind database file"},
-	}
-
-	for _, test := range tests {
-		result := getDatabaseDescription(test.dbType)
-		if result != test.expected {
-			t.Errorf(
-				"getDatabaseDescription(%s) = %s, expected %s",
-				test.dbType,
-				result,
-				test.expected,
-			)
-		}
 	}
 }
 
@@ -423,15 +367,13 @@ func TestReloadDatabase(t *testing.T) {
 		t.Fatalf("Failed to load test database: %v", err)
 	}
 
-	// Get initial database info
+	initialReader, _ := manager.GetReader(testDBName)
 	databases := manager.ListDatabases()
 	if len(databases) != 1 {
 		t.Fatalf("Expected 1 database, got %d", len(databases))
 	}
 	initialTime := databases[0].LastUpdated
 
-	// Wait a bit and reload
-	time.Sleep(10 * time.Millisecond)
 	err = manager.LoadDatabase(testDBPath)
 	if err != nil {
 		t.Fatalf("Failed to reload test database: %v", err)
@@ -447,5 +389,185 @@ func TestReloadDatabase(t *testing.T) {
 	newTime := databases[0].LastUpdated
 	if !newTime.Equal(initialTime) {
 		t.Error("Expected same timestamp after reload of unchanged file")
+	}
+	if reader, _ := manager.GetReader(testDBName); reader != initialReader {
+		t.Error("unchanged file replaced its reader")
+	}
+}
+
+func TestReloadReplacedOrModifiedFile(t *testing.T) {
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	data, err := os.ReadFile(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "database.mmdb")
+	//nolint:gosec // The directory comes from t.TempDir.
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.LoadDatabase(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"replaced", "modified"} {
+		before, _ := manager.GetReader("database.mmdb")
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if action == "replaced" {
+			temporary := filepath.Join(dir, "replacement.tmp")
+			//nolint:gosec // The directory comes from t.TempDir.
+			if err := os.WriteFile(temporary, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(temporary, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(temporary, path); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			modified := info.ModTime().Add(time.Second)
+			if err := os.Chtimes(path, modified, modified); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := manager.LoadDatabase(path); err != nil {
+			t.Fatal(err)
+		}
+		after, _ := manager.GetReader("database.mmdb")
+		if after == before {
+			t.Fatalf("%s file retained its old reader", action)
+		}
+		if err := manager.LoadDatabase(path); err != nil {
+			t.Fatal(err)
+		}
+		if reader, _ := manager.GetReader("database.mmdb"); reader != after {
+			t.Fatalf("%s file reloaded twice", action)
+		}
+	}
+}
+
+func TestMetadataAndDuplicateNames(t *testing.T) {
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = manager.Close() }()
+	reader, err := maxminddb.Open(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	data, err := os.ReadFile(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := filepath.Join(t.TempDir(), "custom.mmdb")
+	//nolint:gosec // The directory comes from t.TempDir.
+	if err := os.WriteFile(renamed, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.LoadDatabase(renamed); err != nil {
+		t.Fatal(err)
+	}
+	info, ok := manager.GetDatabase("custom.mmdb")
+	if !ok || info.Type != reader.Metadata.DatabaseType ||
+		info.Description != reader.Metadata.Description["en"] ||
+		!info.LastUpdated.Equal(reader.Metadata.BuildTime()) {
+		t.Fatalf("metadata did not come from MMDB: %+v", info)
+	}
+	duplicate := filepath.Join(t.TempDir(), "custom.mmdb")
+	//nolint:gosec // The directory comes from t.TempDir.
+	if err := os.WriteFile(duplicate, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.LoadDatabase(duplicate); err == nil {
+		t.Fatal("accepted duplicate display name")
+	}
+	manager.RemoveDatabaseByPath(duplicate)
+	if got, ok := manager.GetDatabase(
+		"custom.mmdb",
+	); !ok || got.Path != renamed ||
+		len(manager.ListDatabases()) != 1 {
+		t.Fatal("duplicate load or removal changed the original database")
+	}
+}
+
+func TestWatchDatabaseReplacement(t *testing.T) {
+	dir := t.TempDir()
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	path := filepath.Join(dir, "database.mmdb")
+	install := func(fixture string) {
+		t.Helper()
+		data, err := os.ReadFile(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		temporary := filepath.Join(dir, "replacement.tmp")
+		//nolint:gosec // The directory comes from t.TempDir.
+		if err := os.WriteFile(temporary, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(temporary, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	install(testDBPath)
+	if err := manager.LoadDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.WatchDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+	manager.StartWatching()
+	old, ok := manager.GetReader("database.mmdb")
+	if !ok {
+		t.Fatal("initial database was not loaded")
+	}
+	ip := netip.MustParseAddr("81.2.69.160")
+	var before map[string]any
+	if err := old.Lookup(ip).Decode(&before); err != nil || len(before) == 0 {
+		t.Fatalf("fixture lookup failed: %v", err)
+	}
+	waitFor := func(description string, ready func() bool) {
+		t.Helper()
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for !ready() {
+			select {
+			case <-ticker.C:
+			case <-deadline.C:
+				t.Fatalf("watcher did not detect %s", description)
+			}
+		}
+	}
+	install("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	waitFor("replacement", func() bool {
+		reader, ok := manager.GetReader("database.mmdb")
+		return ok && reader.Metadata.DatabaseType == "GeoLite2-ASN"
+	})
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("removal", func() bool {
+		_, ok := manager.GetReader("database.mmdb")
+		return !ok
+	})
+	var after map[string]any
+	if err := old.Lookup(ip).Decode(&after); err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("replacement invalidated the retained reader: %v", err)
 	}
 }

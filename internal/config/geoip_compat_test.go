@@ -1,10 +1,11 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -263,12 +264,8 @@ DatabaseDirectory /convert/path
 }
 
 func TestParseGeoIPConfigFileNotFound(t *testing.T) {
-	_, err := ParseGeoIPConfig("/nonexistent/path/GeoIP.conf")
-	if err == nil {
-		t.Error("Expected error for nonexistent file, got nil")
-	}
-	if !strings.Contains(err.Error(), "no such file or directory") &&
-		!strings.Contains(err.Error(), "cannot find the file") {
+	_, err := ParseGeoIPConfig(filepath.Join(t.TempDir(), "missing", "GeoIP.conf"))
+	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Expected file not found error, got: %v", err)
 	}
 }

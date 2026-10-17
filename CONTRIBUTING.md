@@ -1,314 +1,106 @@
-# Contributing to MaxMindDB MCP Server
+# Contributing
 
-Thank you for your interest in contributing to the MaxMindDB MCP Server! This document provides guidelines and information for contributors.
+## Setup
 
-## Quick Start for Contributors
-
-1. **Fork and Clone**
-
-   ```bash
-   git clone https://github.com/your-username/maxminddb-mcp.git
-   cd maxminddb-mcp
-   ```
-
-2. **Install Dependencies**
-
-   ```bash
-   go mod tidy
-   ```
-
-3. **Run Tests**
-
-   ```bash
-   go test ./...
-   ```
-
-4. **Run Linting**
-   ```bash
-   golangci-lint run
-   ```
-
-## Development Environment
-
-### Prerequisites
-
-- **Go 1.24+**: Uses modern stdlib features like `log/slog`, `net/netip`, `slices`, and `maps`
-- **golangci-lint**: For code quality checks
-- **MaxMind Account** (optional): For testing with real databases
-
-### Setup
-
-1. **Build the binary**:
-
-   ```bash
-   go build -o bin/maxminddb-mcp cmd/maxminddb-mcp/main.go
-   ```
-
-2. **Run with debug logging**:
-
-   ```bash
-   MAXMINDDB_MCP_LOG_LEVEL=debug ./bin/maxminddb-mcp
-   ```
-
-3. **Test MCP protocol**:
-   ```bash
-   echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./bin/maxminddb-mcp
-   ```
-
-## Code Standards
-
-### Go Style Guidelines
-
-- **Formatting**: Uses `golangci-lint` with `gofumpt` and `goimports`
-- **Naming Conventions**:
-  - Exported: `PascalCase` for public APIs
-  - Internal: `camelCase` for private members
-  - Constants: `CamelCase` for all constants
-  - Packages: Short, lowercase, no underscores
-- **JSON/TOML Tags**: `snake_case` (enforced by `tagliatelle` linter)
-
-### Specific Terminology
-
-- "MaxMind" (not "Maxmind" or "maxmind")
-- "GeoIP" (not "geoip" or "GeoIp")
-- "MMDB" for MaxMind database files
-
-### Error Handling
-
-- Use `errors.Is/As` for error checking
-- Avoid deprecated `os.IsNotExist/IsExist`
-- Wrap errors with `%w` for error chains
-- Return structured errors for MCP protocol
-
-### Logging
-
-- Use `log/slog` with structured logging
-- Avoid `fmt.Printf` for application logs
-- Configure levels: `debug`, `info`, `warn`, `error`
-
-## Project Architecture
-
-### Directory Structure
-
-- **`cmd/maxminddb-mcp/`**: CLI entrypoint and main binary
-- **`internal/config/`**: Configuration management and validation
-- **`internal/database/`**: MaxMind database management with file watching
-- **`internal/filter/`**: Filter engine with operator support
-- **`internal/iterator/`**: Stateful iterator system for network ranges
-- **`internal/mcp/`**: MCP protocol server implementation
-- **`test/`**: Integration and performance tests
-- **`testdata/`**: MMDB fixtures (avoid adding large files)
-
-### Key Design Patterns
-
-- **Direct Pull Model**: Iterator pulls directly from MMDB readers
-- **Manager Pattern**: Database lifecycle with concurrent safety
-- **Filter Engine**: Type-aware comparisons with operator validation
-- **Structured Errors**: Machine-readable error responses
-
-## Testing
-
-### Test Types
-
-1. **Unit Tests**: Place next to code files (`*_test.go`)
-2. **Integration Tests**: In `test/` directory
-3. **Coverage Target**: ≥80% for changed packages
-
-### Running Tests
+Clone with fixtures, or initialize them in an existing checkout:
 
 ```bash
-# All tests
+git submodule update --init --recursive
+go mod download
+npm ci
+```
+
+Use Go 1.27.2 for development and release builds. The runtime module requires Go 1.26. The fixture module requires Go 1.27 and uses a pinned `mmdbwriter/v2` prerelease.
+
+CI uses Node 24.22.0, Prettier 3.9.10, golangci-lint 2.15.0, and GoReleaser 2.18.3. Prettier is pinned in `package-lock.json`. Install the Go tools at those versions, or run them through [mise](https://mise.jdx.dev/):
+
+```bash
+mise install golangci-lint@2.15.0 goreleaser@2.18.3
+mise exec golangci-lint@2.15.0 -- golangci-lint fmt
+mise exec golangci-lint@2.15.0 -- golangci-lint run ./...
+```
+
+## Checks
+
+```bash
+go test -race -cover ./...
+go vet ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+npm run format:check
+mise exec goreleaser@2.18.3 -- goreleaser check
+```
+
+Run fixture generator tests from the submodule:
+
+```bash
+cd testdata
 go test ./...
-
-# With coverage
-go test -cover ./...
-
-# Race detection
-go test -race ./...
-
-# Specific package
-go test ./internal/filter
-
-# With verbose output
-go test -v ./internal/iterator
 ```
 
-### Test Structure
+Tests use bundled MMDB fixtures and local HTTP servers. They do not require a MaxMind account or databases in your home directory. Add regression tests for pagination, filters, config loading, and download failures when changing those paths. Prefer assertions about returned data over tests that only check for a non-nil result. Aim for at least 80% coverage in changed packages, while prioritizing meaningful cases.
 
-```go
-func TestFeatureName(t *testing.T) {
-    tests := []struct {
-        name     string
-        input    InputType
-        expected OutputType
-        wantErr  bool
-    }{
-        {
-            name: "descriptive test case name",
-            // test case data
-        },
-    }
+CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. Fixture generator tests and vulnerability checks run on Linux.
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // test implementation
-        })
-    }
-}
-```
-
-## Making Changes
-
-### Feature Development
-
-1. **Create Feature Branch**
-
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make Changes**
-   - Follow existing code patterns and conventions
-   - Add tests for new functionality
-   - Update documentation as needed
-
-3. **Pre-commit Checklist**
-   - [ ] `golangci-lint run` passes
-   - [ ] `go test ./...` passes
-   - [ ] `go vet ./...` passes
-   - [ ] Documentation updated
-   - [ ] Tests added for new functionality
-
-4. **Commit Messages**
-   - Use imperative mood ("Add feature" not "Added feature")
-   - Keep subject line ≤72 characters
-   - Explain rationale in commit body
-   - Reference issues when applicable
-
-### Common Development Tasks
-
-#### Adding New Filter Operators
-
-1. Add operator to `SupportedOperators()` in `internal/filter/filter.go`
-2. Implement comparison function
-3. Add case to `evaluateFilter()` switch
-4. Add validation in `Validate()` function
-5. Update documentation and tests
-
-#### Database Management
-
-- Database readers use memory-mapped files
-- Never call `reader.Close()` - let GC handle cleanup
-- Use absolute paths for database keys
-- Handle duplicate names with warnings
-
-#### Iterator Implementation
-
-- Iterate directly over `NetworksWithin` (pull model)
-- Use resume tokens for stateful continuation
-- TTL-based cleanup for expired iterators
-
-## Pull Request Process
-
-### Before Submitting
-
-1. **Fork the repository** and create your branch from `main`
-2. **Run the full test suite** and ensure all tests pass
-3. **Run linting** and fix any issues
-4. **Update documentation** for any API changes
-5. **Add or update tests** for your changes
-
-### PR Guidelines
-
-1. **Clear Description**
-   - Explain what changes you made and why
-   - Link to any relevant issues
-   - Include screenshots for UI changes (if applicable)
-
-2. **Small, Focused Changes**
-   - Keep PRs focused on a single feature or fix
-   - Break large changes into multiple PRs when possible
-
-3. **Test Coverage**
-   - Include tests for new functionality
-   - Ensure existing tests still pass
-   - Aim for good test coverage on changed code
-
-4. **Documentation**
-   - Update README.md for user-facing changes
-   - Update CLAUDE.md for development changes
-   - Update CHANGELOG.md following the existing format
-
-### Review Process
-
-1. **Automated Checks**: All GitHub Actions must pass
-2. **Code Review**: Maintainers will review your code
-3. **Feedback**: Address any requested changes
-4. **Merge**: Once approved, maintainers will merge your PR
-
-## Issue Reporting
-
-### Bug Reports
-
-Please include:
-
-- **Environment**: Go version, OS, MCP client
-- **Configuration**: Sanitized config (remove secrets)
-- **Steps to Reproduce**: Clear, minimal reproduction case
-- **Expected vs Actual Behavior**
-- **Logs**: With `MAXMINDDB_MCP_LOG_LEVEL=debug` if possible
-
-### Feature Requests
-
-Please include:
-
-- **Use Case**: What problem does this solve?
-- **Proposed Solution**: How should it work?
-- **Alternatives**: What other approaches have you considered?
-- **Impact**: Who would benefit from this feature?
-
-### Security Issues
-
-For security-related issues, please email the maintainer directly rather than opening a public issue.
-
-## Development Tips
-
-### Debugging
+The stdio tests cover all five supported protocol revisions, discovery-free modern requests, response identity and result types, invalid metadata, unsupported versions, progress, and cancellation notifications. To run them with the startup and shutdown tests:
 
 ```bash
-# Enable debug logging
-MAXMINDDB_MCP_LOG_LEVEL=debug ./bin/maxminddb-mcp
-
-# Test with real MCP client
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | ./bin/maxminddb-mcp
+go test -race ./internal/mcp ./cmd/maxminddb-mcp
 ```
 
-### Common Issues
-
-- **Database loading**: Check file permissions and MMDB format
-- **Iterator behavior**: Test with small networks first
-- **Filter validation**: Verify operator names and value types
-- **Network parsing**: Ensure CIDR format is correct
-
-### Performance Testing
+## Build and release checks
 
 ```bash
-# Run performance tests
-go test ./test -run=TestPerformance -v
-
-# Memory profiling
-go test ./test -run=TestPerformance -memprofile=mem.prof
-go tool pprof mem.prof
+go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
+./bin/maxminddb-mcp --help
+./bin/maxminddb-mcp --version
+mise exec goreleaser@2.18.3 -- goreleaser build --snapshot --clean
 ```
 
-## License
+The Dockerfile consumes a prebuilt Linux binary named `maxminddb-mcp` under `linux/amd64/` or `linux/arm64/` in its build context. Build in a temporary directory to avoid sending config files or credentials to Docker:
 
-By contributing to this project, you agree that your contributions will be licensed under the ISC License.
+```bash
+build_dir=$(mktemp -d)
+mkdir -p "$build_dir/linux/amd64"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$build_dir/linux/amd64/maxminddb-mcp" ./cmd/maxminddb-mcp
+cp Dockerfile "$build_dir/Dockerfile"
+docker build --platform linux/amd64 --build-arg TARGETPLATFORM=linux/amd64 -t maxminddb-mcp:dev "$build_dir"
+```
 
-## Questions?
+GoReleaser uses `dockers_v2` and Docker Buildx to build the multi-platform image and retain the `-amd64` and `-arm64` tags. Snapshot builds load images locally without publishing and add a platform suffix to each tag. They do not update `latest` tags. To test release packaging and images:
 
-- **Discussions**: [GitHub Discussions](https://github.com/oschwald/maxminddb-mcp/discussions)
-- **Issues**: [GitHub Issues](https://github.com/oschwald/maxminddb-mcp/issues)
+```bash
+mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
+```
 
-Thank you for contributing!
+Building ARM64 images on an AMD64 host requires an ARM64 builder or QEMU emulation. To check binary packaging without images, add `--skip=docker`. See [GoReleaser's Docker documentation](https://goreleaser.com/customization/package/dockers_v2/).
+
+Release CI runs only on version tags. Local build and config checks do not publish a release.
+
+## Code and behavior
+
+| Directory           | Responsibility                                    |
+| ------------------- | ------------------------------------------------- |
+| `cmd/maxminddb-mcp` | Process lifecycle, config loading, stdio startup  |
+| `internal/config`   | TOML and GeoIP.conf loading, validation           |
+| `internal/database` | Readers, file watching, atomic downloads          |
+| `internal/filter`   | Operators and field comparisons                   |
+| `internal/iterator` | Page cursors, cancellation, resume tokens, expiry |
+| `internal/mcp`      | Tool schemas, handlers, protocol tests            |
+| `test`              | Integration and performance tests                 |
+| `testdata`          | Upstream fixture submodule and generator          |
+
+Use `golangci-lint fmt` for Go formatting and `npm run format` for Markdown. The lint configuration enables an explicit set of checks. Use `MaxMind`, `GeoIP`, and `MMDB` in prose. JSON and TOML field names use `snake_case`.
+
+Wrap Go errors with `%w` and use `errors.Is` or `errors.As`. MCP tool failures must set `isError`. Keep logs on stderr through `log/slog`.
+
+Readers retained by an iterator must remain open. The manager relies on the reader's garbage collection cleanup after references are released. Close temporary readers explicitly when they have not been shared. Database names must be unique, and metadata must come from the MMDB.
+
+A page operation holds the iterator lock for its full duration. Stop pull cursors on expiry and shutdown. Resume tokens bind to the database name, type, and build epoch. Validate token contents and continuation parameters before using them. Add each new filter operator to `SupportedOperators`, evaluation, validation, and tests.
+
+## Changes and review
+
+Keep commits focused. Preserve existing commits after human review and add follow-up commits. Update README.md for public behavior, CLAUDE.md for development guidance, and CHANGELOG.md for release notes.
+
+Before proposing a change, run the checks above and inspect the diff for generated files or credentials. For bug reports, include the OS, Go version, MCP client, sanitized config, reproduction steps, and relevant stderr logs. Report security issues privately to the maintainer.
+
+Contributions are licensed under the [ISC license](LICENSE).

@@ -1,4 +1,4 @@
-FROM alpine:3.23
+FROM alpine:3.24
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates tzdata
@@ -12,7 +12,8 @@ RUN mkdir -p /config /data && \
     chown -R maxmind:maxmind /config /data
 
 # Copy the binary
-COPY maxminddb-mcp /usr/local/bin/maxminddb-mcp
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/maxminddb-mcp /usr/local/bin/maxminddb-mcp
 
 # Make sure the binary is executable
 RUN chmod +x /usr/local/bin/maxminddb-mcp
@@ -30,9 +31,5 @@ VOLUME ["/config", "/data"]
 
 # Set working directory
 WORKDIR /data
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"clientInfo":{"name":"healthcheck","version":"1.0"}}}' | maxminddb-mcp > /dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/usr/local/bin/maxminddb-mcp"]

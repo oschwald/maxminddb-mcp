@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 // Mode constants for configuration.
@@ -68,9 +66,6 @@ func DefaultConfig() *Config {
 			DatabaseDir: filepath.Join(homeDir, ".cache", "maxminddb-mcp", "databases"),
 			Endpoint:    "https://updates.maxmind.com",
 		},
-		GeoIPCompat: GeoIPCompatConfig{
-			DatabaseDir: filepath.Join(homeDir, ".cache", "maxminddb-mcp", "databases"),
-		},
 	}
 }
 
@@ -96,21 +91,30 @@ func (c *Config) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid update_interval: %w", err)
 	}
+	if c.UpdateIntervalDuration <= 0 {
+		return errors.New("update_interval must be positive")
+	}
 
 	c.IteratorTTLDuration, err = time.ParseDuration(c.IteratorTTL)
 	if err != nil {
 		return fmt.Errorf("invalid iterator_ttl: %w", err)
+	}
+	if c.IteratorTTLDuration <= 0 {
+		return errors.New("iterator_ttl must be positive")
 	}
 
 	c.IteratorCleanupIntervalDuration, err = time.ParseDuration(c.IteratorCleanupInterval)
 	if err != nil {
 		return fmt.Errorf("invalid iterator_cleanup_interval: %w", err)
 	}
+	if c.IteratorCleanupIntervalDuration <= 0 {
+		return errors.New("iterator_cleanup_interval must be positive")
+	}
 
 	// Mode-specific validation
 	switch c.Mode {
-	case ModeMaxMind:
-		if c.MaxMind.AccountID == 0 {
+	case ModeMaxMind, ModeGeoIPCompat:
+		if c.MaxMind.AccountID <= 0 {
 			return errors.New("maxmind mode requires account_id")
 		}
 		if c.MaxMind.LicenseKey == "" {
@@ -125,11 +129,6 @@ func (c *Config) Validate() error {
 	case ModeDirectory:
 		if len(c.Directory.Paths) == 0 {
 			return errors.New("directory mode requires at least one path")
-		}
-	case ModeGeoIPCompat:
-		// Config path is optional, will search default locations
-		if c.GeoIPCompat.DatabaseDir == "" {
-			return errors.New("geoip_compat mode requires database_dir")
 		}
 	default:
 		// No additional validation for other modes
@@ -170,14 +169,12 @@ func (c *Config) ExpandPaths() error {
 
 // LoadConfig loads configuration from a TOML file.
 func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	cfg := DefaultConfig()
+	if err := loadTOMLConfig(path, cfg); err != nil {
+		return nil, err
 	}
-
-	var cfg Config
-	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse TOML: %w", err)
+	if err := cfg.ExpandPaths(); err != nil {
+		return nil, err
 	}
 
 	// Validate and set defaults
@@ -185,7 +182,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 // expandPath replaces ~ with home directory.

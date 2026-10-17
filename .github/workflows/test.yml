@@ -4,29 +4,28 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.24'
-      
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          go-version: '1.27.2'
       
       - name: Download dependencies
         run: go mod download
@@ -34,23 +33,32 @@ jobs:
       - name: Run tests
         run: go test -race -cover ./...
 
+      - name: Test fixture generator
+        if: runner.os == 'Linux'
+        run: go test ./...
+        working-directory: testdata
+
+      - name: Check vulnerabilities
+        if: runner.os == 'Linux'
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   build:
     name: Build
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.24'
+          go-version: '1.27.2'
       
       - name: Build binary
-        run: go build -o bin/maxminddb-mcp cmd/maxminddb-mcp/main.go
+        run: go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
       
       - name: Test binary help
-        run: ./bin/maxminddb-mcp --help || true
+        run: ./bin/maxminddb-mcp --help

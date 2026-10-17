@@ -26,15 +26,11 @@ type GeoIPConfig struct {
 
 // DefaultGeoIPPaths returns the default paths where GeoIP.conf might be located.
 func DefaultGeoIPPaths() []string {
-	paths := []string{
-		"/etc/GeoIP.conf",
-		"/usr/local/etc/GeoIP.conf",
-	}
-
+	paths := []string{}
 	if homeDir, err := os.UserHomeDir(); err == nil {
-		userPath := filepath.Join(homeDir, ".config", "maxminddb-mcp", "GeoIP.conf")
-		paths = append(paths, userPath)
+		paths = append(paths, filepath.Join(homeDir, ".config", "maxminddb-mcp", "GeoIP.conf"))
 	}
+	paths = append(paths, "/etc/GeoIP.conf", "/usr/local/etc/GeoIP.conf")
 
 	return paths
 }
@@ -64,20 +60,20 @@ func ParseGeoIPConfig(path string) (*GeoIPConfig, error) {
 			continue
 		}
 
-		// Split on first space
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) < 2 {
-			continue // Skip malformed lines
+		separator := strings.IndexAny(line, " \t")
+		if separator < 0 {
+			return nil, fmt.Errorf("line %d: expected a key and value", lineNum)
 		}
-
-		key := parts[0]
-		value := strings.TrimSpace(parts[1])
+		key := line[:separator]
+		value := strings.TrimSpace(line[separator+1:])
 
 		switch key {
 		case "AccountID", "UserId": // UserId is deprecated but still supported
-			if accountID, err := strconv.Atoi(value); err == nil {
-				config.AccountID = accountID
+			accountID, err := strconv.Atoi(value)
+			if err != nil || accountID <= 0 {
+				return nil, fmt.Errorf("line %d: AccountID must be a positive integer", lineNum)
 			}
+			config.AccountID = accountID
 		case "LicenseKey":
 			config.LicenseKey = value
 		case "EditionIDs", "ProductIds": // ProductIds is deprecated but still supported
@@ -86,6 +82,9 @@ func ParseGeoIPConfig(path string) (*GeoIPConfig, error) {
 			config.DatabaseDirectory = value
 		case "Host":
 			config.Host = value
+			if !strings.Contains(value, "://") {
+				config.Host = "https://" + value
+			}
 		case "Proxy":
 			config.Proxy = value
 		case "ProxyUserPassword":

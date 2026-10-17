@@ -2,7 +2,10 @@
 package filter
 
 import (
+	"cmp"
 	"fmt"
+	"math"
+	"math/big"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -46,7 +49,13 @@ func SupportedOperators() []string {
 // Engine handles filter evaluation.
 type Engine struct {
 	mode    Mode
-	filters []Filter
+	filters []preparedFilter
+}
+
+type preparedFilter struct {
+	Filter
+	pattern *regexp.Regexp
+	path    []string
 }
 
 // New creates a new filter engine.
@@ -54,10 +63,18 @@ func New(filters []Filter, mode Mode) *Engine {
 	if mode == "" {
 		mode = ModeAnd
 	}
-	return &Engine{
-		filters: filters,
-		mode:    mode,
+	prepared := make([]preparedFilter, len(filters))
+	for i, f := range filters {
+		prepared[i] = preparedFilter{Filter: f, path: strings.Split(f.Field, ".")}
+		if f.Operator == "regex" {
+			if expression, ok := f.Value.(string); ok {
+				if pattern, err := regexp.Compile(expression); err == nil {
+					prepared[i].pattern = pattern
+				}
+			}
+		}
 	}
+	return &Engine{filters: prepared, mode: mode}
 }
 
 // Matches evaluates all filters against the given data.
@@ -87,8 +104,8 @@ func (e *Engine) Matches(data map[string]any) bool {
 }
 
 // evaluateFilter evaluates a single filter against the data.
-func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
-	fieldValue := getNestedField(data, filter.Field)
+func (*Engine) evaluateFilter(filter preparedFilter, data map[string]any) bool {
+	fieldValue := getNestedField(data, filter.path)
 
 	switch filter.Operator {
 	case "equals":
@@ -102,7 +119,8 @@ func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
 	case "contains":
 		return containsString(fieldValue, filter.Value)
 	case "regex":
-		return matchesRegex(fieldValue, filter.Value)
+		fieldString, ok := fieldValue.(string)
+		return ok && filter.pattern != nil && filter.pattern.MatchString(fieldString)
 	case "greater_than":
 		return compareGreater(fieldValue, filter.Value)
 	case "greater_than_or_equal":
@@ -123,8 +141,7 @@ func (*Engine) evaluateFilter(filter Filter, data map[string]any) bool {
 }
 
 // getNestedField retrieves a nested field from a map using dot notation.
-func getNestedField(data map[string]any, fieldPath string) any {
-	parts := strings.Split(fieldPath, ".")
+func getNestedField(data map[string]any, parts []string) any {
 	current := data
 
 	for i, part := range parts {
@@ -155,7 +172,45 @@ func getNestedField(data map[string]any, fieldPath string) any {
 
 // compareEqual compares two values for equality.
 func compareEqual(fieldValue, filterValue any) bool {
-	return reflect.DeepEqual(fieldValue, filterValue)
+	if reflect.DeepEqual(fieldValue, filterValue) {
+		return true
+	}
+	// Compare exactly so integers above 2^53 do not round to the same value.
+	comparison, ok := compareExactNumbers(fieldValue, filterValue)
+	return ok && comparison == 0
+}
+
+func compareExactNumbers(fieldValue, filterValue any) (int, bool) {
+	field, filter := reflect.ValueOf(fieldValue), reflect.ValueOf(filterValue)
+	switch {
+	case field.CanInt() && filter.CanInt():
+		return cmp.Compare(field.Int(), filter.Int()), true
+	case field.Kind() >= reflect.Uint && field.Kind() <= reflect.Uint64 &&
+		filter.Kind() >= reflect.Uint && filter.Kind() <= reflect.Uint64:
+		return cmp.Compare(field.Uint(), filter.Uint()), true
+	case field.CanFloat() && filter.CanFloat():
+		left, right := field.Float(), filter.Float()
+		return cmp.Compare(left, right), !math.IsNaN(left) && !math.IsNaN(right) &&
+			!math.IsInf(left, 0) && !math.IsInf(right, 0)
+	}
+	fieldNumber, filterNumber := exactNumber(field), exactNumber(filter)
+	if fieldNumber == nil || filterNumber == nil {
+		return 0, false
+	}
+	return fieldNumber.Cmp(filterNumber), true
+}
+
+func exactNumber(v reflect.Value) *big.Rat {
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return new(big.Rat).SetInt64(v.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return new(big.Rat).SetUint64(v.Uint())
+	case reflect.Float32, reflect.Float64:
+		return new(big.Rat).SetFloat64(v.Float())
+	default:
+		return nil
+	}
 }
 
 // containsValue checks if a value is in an array.
@@ -187,69 +242,41 @@ func containsString(fieldValue, filterValue any) bool {
 	return strings.Contains(fieldStr, filterStr)
 }
 
-// matchesRegex checks if a string matches a regular expression.
-func matchesRegex(fieldValue, filterValue any) bool {
-	fieldStr, ok1 := fieldValue.(string)
-	regexStr, ok2 := filterValue.(string)
-
-	if !ok1 || !ok2 {
-		return false
-	}
-
-	regex, err := regexp.Compile(regexStr)
-	if err != nil {
-		return false
-	}
-
-	return regex.MatchString(fieldStr)
-}
-
 // compareGreater compares if fieldValue > filterValue.
 func compareGreater(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
-
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
-	return fieldNum > filterNum
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison > 0
 }
 
 // compareLess compares if fieldValue < filterValue.
 func compareLess(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
-
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
-	return fieldNum < filterNum
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison < 0
 }
 
 // compareGreaterEqual compares if fieldValue >= filterValue.
 func compareGreaterEqual(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
-
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
-	return fieldNum >= filterNum
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison >= 0
 }
 
 // compareLessEqual compares if fieldValue <= filterValue.
 func compareLessEqual(fieldValue, filterValue any) bool {
-	fieldNum, err1 := toFloat64(fieldValue)
-	filterNum, err2 := toFloat64(filterValue)
+	comparison, ok := compareNumbers(fieldValue, filterValue)
+	return ok && comparison <= 0
+}
 
-	if err1 != nil || err2 != nil {
-		return false
+func compareNumbers(fieldValue, filterValue any) (int, bool) {
+	if comparison, ok := compareExactNumbers(fieldValue, filterValue); ok {
+		return comparison, true
 	}
-
-	return fieldNum <= filterNum
+	// Preserve numeric string coercion and IEEE infinity ordering.
+	fieldFloat, err1 := toFloat64(fieldValue)
+	filterFloat, err2 := toFloat64(filterValue)
+	if err1 != nil || err2 != nil || math.IsNaN(fieldFloat) || math.IsNaN(filterFloat) {
+		return 0, false
+	}
+	return cmp.Compare(fieldFloat, filterFloat), true
 }
 
 // toFloat64 converts various numeric types to float64.
