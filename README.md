@@ -61,7 +61,7 @@ Go developers can also [build from source](https://github.com/oschwald/maxminddb
 
 ## Connect a client
 
-Choose your client for step-by-step setup. The guides include the commands, settings, and upgrade instructions for each installation method.
+Choose your client for step-by-step setup.
 
 | Client                                                                                                                                                                                           | Setup requirements                                                              |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
