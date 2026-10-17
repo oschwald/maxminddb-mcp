@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Install new MaxMind editions through MCP and remember them across restarts for scheduled and manual updates.
+- Import databases from HTTP(S) URLs, including gzip, tar, and ZIP downloads, with validation and explicit replacement of existing files.
 - Configure MaxMind downloads or existing MMDB files through Claude Desktop extension settings, without a config file or CLI.
 - Build native MCPB extensions and experimental Claude plugin ZIPs with release binaries. Include them in release checksums.
 - Publish MCP Registry metadata from release CI and support automatic Homebrew tap updates after credential setup.
@@ -44,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enforce URL download limits before HTTP gzip decoding and check ZIP directory limits before allocating entry metadata.
 - Exclude IPv4 alias subtrees from summary coverage when a query starts below the alias root. Preserve independent IPv6 records in custom databases.
 - Allow slow downloads and update lock waits to finish without a fixed total deadline. Caller cancellation and shutdown still interrupt network operations and lock waits.
 - Release newly created iterators when their first page fails or is canceled. Reclaim expired iterators before admitting new queries.

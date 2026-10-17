@@ -16,11 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/flock"
 	"github.com/maxmind/geoipupdate/v8/client"
 	"github.com/oschwald/maxminddb-mcp/internal/config"
-
-	"github.com/oschwald/maxminddb-golang/v2"
 )
 
 // UpdateResult represents the result of an update operation.
@@ -132,9 +129,13 @@ func (u *Updater) UpdateAll(
 		return nil, err
 	}
 
-	results = make([]UpdateResult, 0, len(u.config.MaxMind.Editions))
+	editions, err := u.editions()
+	if err != nil {
+		return nil, err
+	}
+	results = make([]UpdateResult, 0, len(editions))
 
-	for _, edition := range u.config.MaxMind.Editions {
+	for _, edition := range editions {
 		if err := ctx.Err(); err != nil {
 			return results, err
 		}
@@ -145,10 +146,11 @@ func (u *Updater) UpdateAll(
 	return results, nil
 }
 
-// UpdateDatabase updates a specific database.
-func (u *Updater) UpdateDatabase(
+// InstallEdition downloads an edition and remembers it for future updates.
+func (u *Updater) InstallEdition(
 	ctx context.Context,
 	edition string,
+	report func(string),
 ) (result UpdateResult, err error) {
 	select {
 	case <-ctx.Done():
@@ -162,7 +164,12 @@ func (u *Updater) UpdateDatabase(
 		return UpdateResult{}, err
 	}
 
-	result = u.updateDatabase(ctx, edition, nil)
+	result = u.updateDatabase(ctx, edition, report)
+	if result.Error == "" && !slices.Contains(u.config.MaxMind.Editions, edition) {
+		if err := u.rememberEdition(edition); err != nil {
+			result.Error = "Database installed, but could not enable future updates: " + err.Error()
+		}
+	}
 	return result, nil
 }
 
@@ -213,7 +220,7 @@ func (u *Updater) updateDatabase(
 		Updated:  false,
 	}
 
-	if edition == "" || filepath.Base(edition) != edition || edition == "." || edition == ".." {
+	if !validEdition(edition) {
 		result.Error = "edition must be a database edition ID without a path"
 		return result
 	}
@@ -221,21 +228,12 @@ func (u *Updater) updateDatabase(
 		report("Checking " + edition)
 	}
 	dbPath := filepath.Join(u.config.MaxMind.DatabaseDir, edition+".mmdb")
-	if err := os.MkdirAll(u.config.MaxMind.DatabaseDir, 0o750); err != nil {
-		result.Error = fmt.Sprintf("failed to create database directory: %v", err)
+	unlock, err := lockDatabase(ctx, dbPath)
+	if err != nil {
+		result.Error = err.Error()
 		return result
 	}
-	// Keep the lock file so waiting processes always lock the same file.
-	fileLock := flock.New(dbPath + ".lock")
-	if _, err := fileLock.TryLockContext(ctx, 100*time.Millisecond); err != nil {
-		result.Error = fmt.Sprintf("lock database update: %v", err)
-		return result
-	}
-	defer func() {
-		if err := fileLock.Close(); err != nil {
-			slog.Error("Failed to unlock database update", "edition", edition, "err", err)
-		}
-	}()
+	defer unlock()
 
 	currentMD5, err := databaseChecksum(dbPath)
 	if err != nil {
@@ -261,78 +259,34 @@ func (u *Updater) updateDatabase(
 		return result
 	}
 
-	// Write to temporary file first
 	file, err := os.CreateTemp(u.config.MaxMind.DatabaseDir, edition+"-*.tmp")
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to create temp file: %v", err)
 		return result
 	}
-	tempPath := file.Name()
-	defer func() { _ = os.Remove(tempPath) }()
-
-	// Copy data and calculate MD5
-	hasher := md5.New() //nolint:gosec // MD5 used for file integrity checksums, not cryptographic security
-	writer := io.MultiWriter(file, hasher)
+	defer func() { _ = os.Remove(file.Name()) }()
+	writer := io.Writer(file)
 	if report != nil {
 		report("Downloading " + edition)
 		writer = io.MultiWriter(writer, &downloadProgress{report: report, edition: edition})
 	}
-
-	size, err := io.Copy(writer, response.Reader)
-	if err != nil {
-		_ = file.Close()
+	size, copyErr := io.Copy(writer, contextReader{ctx: ctx, reader: response.Reader})
+	closeErr := file.Close()
+	if err := errors.Join(copyErr, closeErr); err != nil {
 		result.Error = fmt.Sprintf("failed to write database: %v", err)
 		return result
 	}
-
-	if err := file.Close(); err != nil {
-		result.Error = fmt.Sprintf("failed to close file: %v", err)
-		return result
-	}
-
-	// Verify MD5 if provided
 	if report != nil {
 		report("Validating " + edition)
 	}
-	newMD5 := hex.EncodeToString(hasher.Sum(nil))
-	if response.MD5 != "" && response.MD5 != newMD5 {
-		result.Error = fmt.Sprintf("MD5 mismatch: expected %s, got %s", response.MD5, newMD5)
-		return result
-	}
-
-	reader, err := maxminddb.Open(tempPath)
-	if err != nil {
-		result.Error = fmt.Sprintf("invalid downloaded database: %v", err)
-		return result
-	}
-	err = reader.Verify()
-	_ = reader.Close()
-	if err != nil {
-		result.Error = fmt.Sprintf("invalid downloaded database: %v", err)
-		return result
-	}
-	if err := ctx.Err(); err != nil {
-		result.Error = err.Error()
-		return result
-	}
-
-	// Atomically replace the old file
-	if err := os.Rename(tempPath, dbPath); err != nil {
-		result.Error = fmt.Sprintf("failed to replace database file: %v", err)
-		return result
-	}
-
-	// Report the installed file, including any reload failure.
-	result.Updated = true
-	result.LastUpdate = response.LastModified
-	result.Size = size
-
-	// Reload in manager
-	if err := u.manager.LoadDatabase(dbPath); err != nil {
-		result.Error = fmt.Sprintf("failed to reload database in manager: %v", err)
-	}
-
-	return result
+	return u.manager.replaceDatabase(
+		ctx,
+		file.Name(),
+		dbPath,
+		response.MD5,
+		response.LastModified,
+		size,
+	)
 }
 
 type downloadProgress struct {

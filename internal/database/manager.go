@@ -39,6 +39,7 @@ type Manager struct {
 	databases     map[string]*Info
 	displayToPath map[string]string // Fast lookup from display name to absolute path
 	watcher       *fsnotify.Watcher
+	installing    chan struct{}
 	watchDirs     []string
 	mu            sync.RWMutex
 }
@@ -55,6 +56,7 @@ func New() (*Manager, error) {
 		databases:     make(map[string]*Info),
 		displayToPath: make(map[string]string),
 		watcher:       watcher,
+		installing:    make(chan struct{}, 1),
 		watchDirs:     make([]string, 0),
 	}, nil
 }
