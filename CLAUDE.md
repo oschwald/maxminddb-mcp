@@ -21,6 +21,7 @@ npm run format:check
 - Send progress only for an active request with a valid progress token. Keep callbacks synchronous, throttle notifications, and omit unknown totals.
 - Stdout is for MCP messages. Use `log/slog` on stderr for application logs.
 - Validate tool arguments and resume tokens. Errors must set MCP `isError`.
+- Decode MMDB records into `any`. Use `record.Lookup` for map paths, array indexes, and `$`. Apply filters before selecting output fields.
 - Hold the per-edition file lock from the installed-file check through installation and reload. Keep lock files on disk.
 - Keep shared MMDB readers open while active iterators can reference them.
 - Apply the iterator limit to both new queries and token resumes. Release new iterators if their first page fails.

@@ -20,6 +20,7 @@ func (s *Server) registerBatchTool() {
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithRawOutputSchema([]byte(batchOutputSchema)),
+		fieldsOption(),
 		mcp.WithArray(
 			"ips",
 			mcp.Required(),
@@ -43,13 +44,17 @@ func (s *Server) handleLookupIPs(
 		//nolint:nilerr // MCP reports validation failures as tool results.
 		return toolError("invalid_ips", "ips must contain 1 to 100 IP address strings"), nil
 	}
+	fields, err := parseFields(request)
+	if err != nil {
+		return toolError("invalid_fields", err.Error()), nil
+	}
 	results := make([]map[string]any, 0, len(ips))
 	failed := false
 	for _, ip := range ips {
 		if err := ctx.Err(); err != nil {
 			return toolError("canceled", err.Error()), nil
 		}
-		result, err := s.lookupIP(ip, request.GetString("database", ""))
+		result, err := s.lookupIP(ip, request.GetString("database", ""), fields)
 		if err != nil {
 			return nil, err
 		}

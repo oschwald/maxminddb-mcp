@@ -70,8 +70,8 @@ type ResumeToken struct {
 
 // NetworkResult represents a single network result.
 type NetworkResult struct {
-	Data    map[string]any `json:"data"`
-	Network netip.Prefix   `json:"network"`
+	Data    any          `json:"data"`
+	Network netip.Prefix `json:"network"`
 }
 
 // IterationResult contains the results of an iteration batch.
@@ -300,7 +300,7 @@ func (m *Manager) Iterate(
 				iterator.resetCursor()
 				break
 			}
-			var data map[string]any
+			var data any
 			if err := result.Decode(&data); err != nil {
 				return nil, fmt.Errorf("decode network: %w", err)
 			}

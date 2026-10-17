@@ -235,6 +235,22 @@ Live iterators retain a cursor. Token resumes scan to the saved position once. R
 
 A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. Each server retains at most 128 iterators, including completed queries until they expire. Expired entries are reclaimed before creating an iterator. At the limit, new queries and token resumes return `iterator_limit`. Continue with an existing `iterator_id` or wait for idle entries to expire. A failed or canceled first page releases its iterator immediately.
 
+### Field selection and custom records
+
+`lookup_ip`, `lookup_ips`, and `lookup_network` accept optional `fields`, with up
+to 64 paths. Omit `fields` or use `[]` to return full records. Selected data is
+an object keyed by the requested paths. Missing paths are omitted. For example,
+`["country.iso_code"]` returns `{"country.iso_code":"US"}` in `data`.
+Filters run against the full record before field selection. Repeat `fields` on
+each page. Selection can change between pages without changing the query cursor.
+
+Custom records can be objects, arrays, or scalar values. Field paths use dots
+between map keys and zero-based array indexes, such as `subdivisions.0.iso_code`.
+Use `$` to select or filter the whole record, including scalar records. Paths
+cannot address a map key containing a dot or a literal root key named `$`.
+Missing paths do not satisfy `exists`. A lookup with no matching record still
+returns `found: false` and `data: null`, regardless of field selection.
+
 ### Filters
 
 Fields use dot notation, such as `country.iso_code`. Operators and aliases use lowercase:

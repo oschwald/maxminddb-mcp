@@ -111,7 +111,7 @@ func TestLookupIPInSingleDatabase(t *testing.T) {
 	}
 
 	// Test valid database
-	result, err := server.lookupIPInSingleDatabase(ip, "1.1.1.1", "GeoLite2-City-Test.mmdb")
+	result, err := server.lookupIPInSingleDatabase(ip, "1.1.1.1", "GeoLite2-City-Test.mmdb", nil)
 	if err != nil {
 		t.Fatalf("Failed to lookup IP in single database: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestLookupIPInSingleDatabase(t *testing.T) {
 	}
 
 	// Test non-existent database
-	result, err = server.lookupIPInSingleDatabase(ip, "1.1.1.1", "nonexistent.mmdb")
+	result, err = server.lookupIPInSingleDatabase(ip, "1.1.1.1", "nonexistent.mmdb", nil)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestLookupIPInAllDatabases(t *testing.T) {
 		t.Fatalf("Failed to parse IP: %v", err)
 	}
 
-	result, err := server.lookupIPInAllDatabases(ip, "1.1.1.1")
+	result, err := server.lookupIPInAllDatabases(ip, "1.1.1.1", nil)
 	if err != nil {
 		t.Fatalf("Failed to lookup IP in all databases: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestServerMethods(t *testing.T) {
 	ip, _ := netip.ParseAddr("8.8.8.8")
 
 	// Test lookupIPInSingleDatabase
-	result, err := server.lookupIPInSingleDatabase(ip, "8.8.8.8", "GeoLite2-City-Test.mmdb")
+	result, err := server.lookupIPInSingleDatabase(ip, "8.8.8.8", "GeoLite2-City-Test.mmdb", nil)
 	if err != nil {
 		t.Errorf("lookupIPInSingleDatabase failed: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestServerMethods(t *testing.T) {
 	}
 
 	// Test lookupIPInAllDatabases
-	result, err = server.lookupIPInAllDatabases(ip, "8.8.8.8")
+	result, err = server.lookupIPInAllDatabases(ip, "8.8.8.8", nil)
 	if err != nil {
 		t.Errorf("lookupIPInAllDatabases failed: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestServerConcurrency(t *testing.T) {
 
 	go func() {
 		defer func() { done <- true }()
-		_, err := server.lookupIPInSingleDatabase(ip, "1.1.1.1", "GeoLite2-City-Test.mmdb")
+		_, err := server.lookupIPInSingleDatabase(ip, "1.1.1.1", "GeoLite2-City-Test.mmdb", nil)
 		if err != nil {
 			t.Errorf("Concurrent lookup failed: %v", err)
 		}
@@ -406,7 +406,7 @@ func TestServerConcurrency(t *testing.T) {
 
 	go func() {
 		defer func() { done <- true }()
-		_, err := server.lookupIPInAllDatabases(ip, "1.1.1.1")
+		_, err := server.lookupIPInAllDatabases(ip, "1.1.1.1", nil)
 		if err != nil {
 			t.Errorf("Concurrent lookup failed: %v", err)
 		}

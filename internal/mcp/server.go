@@ -101,6 +101,7 @@ func (s *Server) registerTools() {
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithRawOutputSchema([]byte(ipOutputSchema)),
 		mcp.WithString("ip", mcp.Required(), mcp.Description("IP address to lookup")),
+		fieldsOption(),
 		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
 	)
 	s.mcp.AddTool(lookupIPTool, s.handleLookupIP)
@@ -170,6 +171,7 @@ func (s *Server) registerTools() {
 			mcp.DefaultNumber(iterator.MaxResults),
 			mcp.Description("Page size from 1 to 1000"),
 		),
+		fieldsOption(),
 		mcp.WithString("iterator_id", mcp.Description("Resume existing iterator (fast path)")),
 		mcp.WithString("resume_token", mcp.Description("Fallback token if iterator expired")),
 	)
@@ -222,10 +224,14 @@ func (s *Server) handleLookupIP(
 	if err := ctx.Err(); err != nil {
 		return toolError("canceled", err.Error()), nil
 	}
-	return s.lookupIP(ipStr, request.GetString("database", ""))
+	fields, err := parseFields(request)
+	if err != nil {
+		return toolError("invalid_fields", err.Error()), nil
+	}
+	return s.lookupIP(ipStr, request.GetString("database", ""), fields)
 }
 
-func (s *Server) lookupIP(ipStr, dbName string) (*mcp.CallToolResult, error) {
+func (s *Server) lookupIP(ipStr, dbName string, fields []string) (*mcp.CallToolResult, error) {
 	// Parse IP address
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
@@ -235,10 +241,10 @@ func (s *Server) lookupIP(ipStr, dbName string) (*mcp.CallToolResult, error) {
 
 	// Perform lookup
 	if dbName != "" {
-		return s.lookupIPInSingleDatabase(ip, ipStr, dbName)
+		return s.lookupIPInSingleDatabase(ip, ipStr, dbName, fields)
 	}
 
-	return s.lookupIPInAllDatabases(ip, ipStr)
+	return s.lookupIPInAllDatabases(ip, ipStr, fields)
 }
 
 // handleLookupNetwork handles the lookup_network tool.
@@ -259,6 +265,10 @@ func (s *Server) handleLookupNetwork(
 		return toolError("invalid_network", "Invalid network: "+networkStr), nil
 	}
 
+	fields, err := parseFields(request)
+	if err != nil {
+		return toolError("invalid_fields", err.Error()), nil
+	}
 	args := request.GetArguments()
 	maxResults := float64(iterator.MaxResults)
 	if value, exists := args["max_results"]; exists {
@@ -365,6 +375,9 @@ func (s *Server) handleLookupNetwork(
 		return toolError("iteration_failed", fmt.Sprintf("Iteration failed: %v", err)), nil
 	}
 
+	for i := range result.Results {
+		result.Results[i].Data = selectFields(result.Results[i].Data, fields)
+	}
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
@@ -413,13 +426,14 @@ func (s *Server) handleUpdateDatabases(
 func (s *Server) lookupIPInSingleDatabase(
 	ip netip.Addr,
 	ipStr, dbName string,
+	fields []string,
 ) (*mcp.CallToolResult, error) {
 	reader, exists := s.dbManager.GetReader(dbName)
 	if !exists {
 		return toolError("db_not_found", "Database not found: "+dbName), nil
 	}
 
-	var record map[string]any
+	var record any
 	lookup := reader.Lookup(ip)
 	if err := lookup.Decode(&record); err != nil {
 		return toolError("lookup_failed", fmt.Sprintf("Lookup failed: %v", err)), nil
@@ -432,12 +446,17 @@ func (s *Server) lookupIPInSingleDatabase(
 
 	if lookup.Found() {
 		result["network"] = lookup.Prefix().String()
+		result["data"] = selectFields(record, fields)
 	}
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
 // lookupIPInAllDatabases performs IP lookup across all databases.
-func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallToolResult, error) {
+func (s *Server) lookupIPInAllDatabases(
+	ip netip.Addr,
+	ipStr string,
+	fields []string,
+) (*mcp.CallToolResult, error) {
 	results := make(map[string]any)
 	databases := s.dbManager.ListDatabases()
 
@@ -447,7 +466,7 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 			continue
 		}
 
-		var record map[string]any
+		var record any
 		lookup := reader.Lookup(ip)
 		if err := lookup.Decode(&record); err != nil {
 			return toolError(
@@ -461,6 +480,7 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 		}
 		if lookup.Found() {
 			dbResult["network"] = lookup.Prefix().String()
+			dbResult["data"] = selectFields(record, fields)
 		}
 
 		results[dbInfo.Name] = dbResult

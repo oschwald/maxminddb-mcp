@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Select fields from IP, batch, and network lookup results. Support scalar and array records, root-value filters, and array indexes in field paths.
+
 - Add `lookup_ips` for bounded batches with ordered per-address results and errors.
 
 - Advertise five-minute private caching for MCP discovery and tool definitions.

@@ -21,7 +21,7 @@ const networkOutputSchema = `{
   "total_matched":{"type":"integer","minimum":0},
   "results":{"type":"array","items":{
    "type":"object","additionalProperties":false,"required":["network","data"],
-   "properties":{"network":{"type":"string"},"data":{"type":"object"}}
+   "properties":{"network":{"type":"string"},"data":{}}
   }}
  }
 }`
@@ -33,13 +33,13 @@ const ipOutputSchema = `{
   {"required":["database","found","network","data"],
    "properties":{
     "database":{"type":"string"},"found":{"type":"boolean"},
-    "network":{"type":["string","null"]},"data":{"type":["object","null"]}
+    "network":{"type":["string","null"]},"data":{}
    }},
   {"required":["databases"],"properties":{
    "databases":{"type":"object","additionalProperties":{
     "type":"object","required":["found","network","data"],
     "properties":{
-     "found":{"type":"boolean"},"network":{"type":["string","null"]},"data":{"type":["object","null"]}
+     "found":{"type":"boolean"},"network":{"type":["string","null"]},"data":{}
     }
    }}
   }}
