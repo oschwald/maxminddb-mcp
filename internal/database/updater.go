@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maxmind/geoipupdate/v7/client"
+	"github.com/maxmind/geoipupdate/v8/client"
 	"github.com/oschwald/maxminddb-mcp/internal/config"
 )
 
