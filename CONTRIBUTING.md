@@ -100,13 +100,13 @@ Prerelease tags publish GitHub assets but skip the registry and Homebrew. Valida
 go run github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1 validate server.json
 ```
 
-For automatic Homebrew publishing, create `oschwald/homebrew-tap` and add the repository secret `HOMEBREW_TAP_TOKEN`. Use a token with Contents write access to that tap. GoReleaser then updates the macOS cask on stable releases. Without the secret, it skips the tap update and still publishes the other artifacts. After the first successful tap publication, users can install with:
+GoReleaser updates the macOS cask in [oschwald/homebrew-tap](https://github.com/oschwald/homebrew-tap) on stable releases. Publishing uses the `HOMEBREW_TAP_TOKEN` Actions secret in this repository. Use a fine-grained token limited to `oschwald/homebrew-tap`, with Contents read and write permission. Replace the secret before the token expires. Without the secret, GoReleaser skips the tap update and still publishes the other artifacts. After the first successful tap publication, users can install with:
 
 ```bash
 brew install --cask oschwald/tap/maxminddb-mcp
 ```
 
-The tap does not exist yet. Do not advertise the command as available until a release has populated it.
+The tap is initialized. Do not advertise the command as available until a release has populated it.
 
 Anthropic's extension directory is a separate submission and review process. CI publishes downloadable bundles, not an approved directory listing. These bundles are unsigned. Verify the downloaded bundle's execution and any OS security prompts on a clean desktop before submitting it. Directory approval or publisher certificates cannot be created by this repository's release workflow.
 
