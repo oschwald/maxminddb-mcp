@@ -49,7 +49,7 @@ go run ../internal/mcp/testdata/generate.go ../internal/mcp/testdata
 
 Tests use bundled MMDB fixtures and local HTTP servers. They do not require a MaxMind account or databases in your home directory. Add regression tests for pagination, filters, config loading, and download failures when changing those paths. Prefer assertions about returned data over tests that only check for a non-nil result. Aim for at least 80% coverage in changed packages, while prioritizing meaningful cases.
 
-CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. On each OS, the extension test builds, packs, and extracts a native MCPB, applies settings through the MCPB configuration resolver, and performs an IP lookup over stdio. It also checks external database retention and credential-safe configuration errors. Fixture generator tests and vulnerability checks run on Linux.
+CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. On each OS, the extension test builds, packs, and extracts native MCPB and OpenAI plugin packages. It applies Claude settings through the MCPB resolver and checks OpenAI config discovery in an isolated home directory. Both packages must perform an IP lookup over stdio. The test also checks external database retention, shared skill contents, and credential-safe configuration errors. Fixture generator tests and vulnerability checks run on Linux.
 
 The stdio tests cover all five supported protocol revisions, discovery-free modern requests, response identity and result types, invalid metadata, unsupported versions, progress, and cancellation notifications. To run them with the startup and shutdown tests:
 
@@ -88,7 +88,7 @@ Release CI runs only on version tags. Local build and config checks do not publi
 
 ### Automated publishing
 
-Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, and experimental Claude plugin ZIPs. It publishes the files and their SHA-256 checksums to GitHub Releases. Packaging uses the pinned `@anthropic-ai/mcpb` development dependency. Node.js is not included in the extensions and is not needed to run the server.
+Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, and experimental Claude and OpenAI plugin ZIPs. It publishes the files and their SHA-256 checksums to GitHub Releases. Packaging uses the pinned `@anthropic-ai/mcpb` and `fflate` development dependencies. Node.js is not included in the extensions and is not needed to run the server.
 
 Each OS and architecture gets its own extension. The MCPB manifest declares the OS, but the format does not yet provide a portable CPU-architecture selector. File names and display names identify the architecture. See [the upstream architecture issue](https://github.com/modelcontextprotocol/mcpb/issues/10).
 
@@ -110,6 +110,12 @@ The tap is initialized. Do not advertise the command as available until a releas
 
 Anthropic's extension directory is a separate submission and review process. CI publishes downloadable bundles, not an approved directory listing. These bundles are unsigned. Verify the downloaded bundle's execution and any OS security prompts on a clean desktop before submitting it. Directory approval or publisher certificates cannot be created by this repository's release workflow.
 
+OpenAI packages are staged in `dist/openai-plugins/PLATFORM_ARCH`. Each package uses the supported `.codex-plugin/plugin.json` compatibility manifest and root `.mcp.json`, with `${PLUGIN_ROOT}` for the executable path. A local marketplace catalog points to that package. The setup skill comes from `packaging/skills/setup/SKILL.md` and is also included in the Claude plugin. OpenAI's `onboardingSkill` points to this file. Keep Claude settings placeholders out of OpenAI manifests. The OpenAI package uses the server's existing config discovery.
+
+The compatibility layout exposes both the MCP server and skill to Codex 0.163.0. Its loader recognized the skill but omitted the MCP server with the portable `plugin.json` and `mcp.json` layout. Recheck the loader before changing formats.
+
+OpenAI directory submission is separate from GitHub asset publishing. Local MCP submissions currently require an approved partner and an allowlisted organization. See the [OpenAI desktop submission guide](https://developers.openai.com/plugins/deploy/desktop-only). CI does not submit or publish directory entries.
+
 ### Desktop acceptance checks
 
 Automated package tests do not exercise Claude Desktop's UI. Before marking Desktop or Cowork support as manually verified, test the matching artifact on each advertised platform:
@@ -121,6 +127,8 @@ Automated package tests do not exercise Claude Desktop's UI. Before marking Desk
 5. For the experimental plugin, upload the ZIP in Cowork and verify that its settings UI and local MCP process work. Do not infer Cowork support from a Desktop chat test.
 
 For a generated plugin's schema, run `claude plugin validate --strict dist/extensions/PLATFORM_ARCH` with Claude Code 2.1.302 or later. The plugin and MCPB use the same executable and settings definitions. The extension defaults to an OS cache directory outside the installation folder. Users who need a different storage location can choose a database folder.
+
+For ChatGPT desktop, test both a direct stdio entry and the extracted OpenAI plugin through its local marketplace. Use existing TOML and GeoIP.conf configurations, including paths with spaces. Check missing configuration, empty databases, an initial download, and an update failure. Run setup in both a new conversation and a conversation where the plugin was just installed. Verify the setup skill is offered, tools work, and the skill does not request secrets. Uninstall, replace the package, and reinstall to check upgrades. The automated test launches the declared command but does not emulate ChatGPT's plugin loader or settings UI.
 
 ## Code and behavior
 
@@ -134,8 +142,8 @@ For a generated plugin's schema, run `claude plugin validate --strict dist/exten
 | `internal/mcp`      | Tool schemas, handlers, protocol tests              |
 | `test`              | Integration and performance tests                   |
 | `testdata`          | Upstream fixture submodule and generator            |
-| `packaging`         | Desktop extension manifest and icon                 |
-| `scripts`           | Extension packaging and installation smoke test     |
+| `packaging`         | Desktop extension manifest, icon, and setup skill   |
+| `scripts`           | Extension and plugin packaging and smoke tests      |
 
 Use `golangci-lint fmt` for Go formatting and `npm run format` for Markdown. The lint configuration enables an explicit set of checks. Use `MaxMind`, `GeoIP`, and `MMDB` in prose. JSON and TOML field names use `snake_case`.
 

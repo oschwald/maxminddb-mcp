@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Package an experimental OpenAI desktop plugin with release binaries, a local marketplace catalog, and SHA-256 checksums. Document direct ChatGPT desktop setup.
+- Include a shared setup skill in Claude and OpenAI plugins to check database status and perform a sample IP lookup.
 - Configure MaxMind downloads or existing MMDB files through Claude Desktop extension settings, without a config file or CLI.
 - Build native MCPB extensions and experimental Claude plugin ZIPs with release binaries. Include them in release checksums.
 - Publish MCP Registry metadata from release CI and support automatic Homebrew tap updates after credential setup.

@@ -161,6 +161,41 @@ TOML `log_level` and `log_format` settings are not supported. Logs go to stderr.
 
 This is a local **stdio** server. Configure your client to launch the installed binary, using an absolute path if it is not in the client's PATH. The server does not expose an HTTP endpoint.
 
+### ChatGPT desktop
+
+Use a local thread in the ChatGPT desktop app. After installing the [standalone executable](#standalone-executable), configure it in a [default location](#config-discovery-and-defaults). If you already have `/etc/GeoIP.conf`, the server discovers it without a new config file. The database directory must be writable if downloads are enabled.
+
+1. Open **Settings → MCP servers → Add server**.
+2. Name the server `maxminddb`, select **STDIO**, and enter the executable's absolute path as the command. No arguments are needed.
+3. Save, then select **Restart**. Open a new local conversation.
+4. Ask: "Using MaxMindDB, list my databases and look up 8.8.8.8."
+
+ChatGPT desktop and Codex share MCP configuration on the same host. If you already added the server through Codex, you do not need a second entry. Direct stdio entries accept environment variables, including our [environment settings](#configuration-without-a-file). The [Codex examples](#codex) show how to set them without a server config file.
+
+These instructions apply to local MCP connections. ChatGPT web and cloud threads do not read the local configuration. See the [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
+
+### ChatGPT desktop plugin (experimental)
+
+Releases include `_openai-plugin.zip` packages for the same OS and architecture combinations as the MCPB extensions. Each ZIP contains the compiled server, an OpenAI plugin manifest, a local marketplace catalog, and a setup skill. No Go or Node.js runtime is required. Use this package as an alternative to the direct MCP entry above.
+
+The plugin uses [existing server configuration](#config-discovery-and-defaults). Keep credentials and databases outside the extracted package. OpenAI plugins do not support Claude's `userConfig` form or `${user_config.*}` substitutions, so this package does not prompt for account settings. See [OpenAI's migration guidance](https://developers.openai.com/plugins/guides/submit-claude-plugin#replace-claude-userconfig).
+
+To test through a local marketplace:
+
+1. Download the matching `_openai-plugin.zip` from [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases) and extract it to a permanent folder.
+2. If you have Codex CLI, register the included marketplace:
+
+   ```bash
+   codex plugin marketplace add /absolute/path/to/extracted-package
+   ```
+
+3. Restart ChatGPT desktop. In **Plugins**, select the **MaxMindDB** marketplace for your platform and install the plugin.
+4. Run the plugin's setup workflow in a local thread. It checks `list_databases` and performs a sample IP lookup. It reports missing configuration and initial downloads without asking for credentials in chat.
+
+For upgrades, uninstall the local plugin, replace the extracted package with the newer release for the same platform, then install it again. External configuration and databases remain in place. Local marketplace registration and desktop UI behavior still need manual validation. See [OpenAI's local marketplace instructions](https://developers.openai.com/plugins/build/plugins).
+
+Release CI publishes the ZIPs and checksums to GitHub. They are not public directory listings. OpenAI currently requires approved-partner access for local MCP submissions. See [desktop plugin submission requirements](https://developers.openai.com/plugins/deploy/desktop-only).
+
 ### Codex
 
 After installing the executable on PATH and configuring it in a default location:
@@ -219,6 +254,8 @@ See the [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 ### Claude Cowork plugin (experimental)
 
 Releases also include a `_claude-plugin.zip` for each extension platform. It contains the same executable and settings as the MCPB. In Cowork, open **Customize → Plugins** and upload the matching ZIP as a custom plugin. Configure its settings before using the tools.
+
+The plugin includes a `setup` skill to check database status and perform a sample IP lookup. Ask it to check your MaxMindDB setup. In Claude Code, invoke `/maxminddb-mcp:setup`. The skill directs credential entry to client settings. It does not collect keys in chat. The MCPB extension does not register plugin skills by itself.
 
 This package follows Claude's plugin format, but Cowork installation and its settings UI still need manual validation. Use the MCPB for Claude Desktop chat. A local MCP plugin does not provide tools to Claude web or mobile. See [Claude's plugin documentation](https://support.claude.com/en/articles/13837440-use-plugins-in-claude).
 
