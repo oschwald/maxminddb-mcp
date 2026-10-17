@@ -26,6 +26,7 @@ var downloadClient = &http.Client{
 	Transport: func() *http.Transport {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.ResponseHeaderTimeout = 30 * time.Second
+		transport.DisableCompression = true
 		return transport
 	}(),
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -159,6 +160,30 @@ func (m *Manager) InstallURL(
 		result.Error = "read downloaded file: " + err.Error()
 		return result
 	}
+	sourceFile := archive
+	if strings.EqualFold(response.Header.Get("Content-Encoding"), "gzip") {
+		decoded, err := os.CreateTemp(dir, "decoded-*.tmp")
+		if err != nil {
+			result.Error = "create decoded download file: " + err.Error()
+			return result
+		}
+		defer func() { _ = decoded.Close(); _ = os.Remove(decoded.Name()) }()
+		gz, err := gzip.NewReader(contextReader{ctx: ctx, reader: archive})
+		if err != nil {
+			result.Error = "decode HTTP gzip: " + err.Error()
+			return result
+		}
+		_, copyErr := copyDatabase(ctx, decoded, gz)
+		if err := errors.Join(copyErr, gz.Close()); err != nil {
+			result.Error = "decode HTTP gzip: " + err.Error()
+			return result
+		}
+		if _, err := decoded.Seek(0, io.SeekStart); err != nil {
+			result.Error = "read decoded download: " + err.Error()
+			return result
+		}
+		sourceFile = decoded
+	}
 	file, err := os.CreateTemp(dir, "database-*.tmp")
 	if err != nil {
 		result.Error = "create database file: " + err.Error()
@@ -168,7 +193,7 @@ func (m *Manager) InstallURL(
 	if report != nil {
 		report("Extracting and validating " + name)
 	}
-	extractErr := extractMMDB(ctx, archive, file)
+	extractErr := extractMMDB(ctx, sourceFile, file)
 	closeErr := file.Close()
 	if err := errors.Join(extractErr, closeErr); err != nil {
 		result.Error = "extract database: " + err.Error()
@@ -260,12 +285,12 @@ func extractZIP(ctx context.Context, source *os.File, target io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := checkZIPDirectory(ctx, source, info.Size()); err != nil {
+		return err
+	}
 	archive, err := zip.NewReader(source, info.Size())
 	if err != nil {
 		return err
-	}
-	if len(archive.File) > 1024 {
-		return errors.New("archive contains more than 1024 entries")
 	}
 	var database *zip.File
 	for _, file := range archive.File {

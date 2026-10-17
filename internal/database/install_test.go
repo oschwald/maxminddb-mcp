@@ -12,9 +12,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -178,12 +180,19 @@ func TestInstallURLFormats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, format := range []string{"raw", "gzip", "tar", "tar.gz", "zip"} {
+	for _, format := range []string{
+		"raw", "gzip", "tar", "tar.gz", "zip",
+		"http-gzip-raw", "http-gzip-gzip", "http-gzip-tar", "http-gzip-tar.gz", "http-gzip-zip",
+	} {
 		t.Run(format, func(t *testing.T) {
 			body := data
-			if format != "raw" {
+			archiveFormat := strings.TrimPrefix(format, "http-gzip-")
+			if archiveFormat != "raw" {
 				// Archive paths are never used as filesystem paths.
-				body = archiveData(t, format, map[string][]byte{"../outside.mmdb": data})
+				body = archiveData(t, archiveFormat, map[string][]byte{"../outside.mmdb": data})
+			}
+			if strings.HasPrefix(format, "http-gzip-") {
+				body = archiveData(t, "gzip", map[string][]byte{"body": body})
 			}
 			endpoint := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +202,9 @@ func TestInstallURLFormats(t *testing.T) {
 					if r.URL.Path == "/redirect" {
 						http.Redirect(w, r, "/download", http.StatusFound)
 						return
+					}
+					if strings.HasPrefix(format, "http-gzip-") {
+						w.Header().Set("Content-Encoding", "GZip")
 					}
 					_, _ = w.Write(body)
 				}),
@@ -241,19 +253,32 @@ func TestInstallURLPreservesExistingOnFailure(t *testing.T) {
 	}
 	badGzip := archiveData(t, "gzip", map[string][]byte{"test.mmdb": data})
 	badGzip[len(badGzip)-8] ^= 0xff
-	for _, format := range []string{"invalid", "gzip", "tar", "tar.gz", "zip", "empty", "large"} {
+	for _, format := range []string{
+		"invalid", "gzip", "tar", "tar.gz", "zip", "empty", "large", "broken-pointers", "broken-search-tree",
+		"http-gzip-checksum", "http-gzip-invalid",
+	} {
 		t.Run(format, func(t *testing.T) {
 			body := []byte("not an MMDB")
 			switch format {
-			case "gzip":
+			case "gzip", "http-gzip-checksum":
 				body = badGzip
 			case "tar", "tar.gz", "zip":
 				body = archiveData(t, format, map[string][]byte{"one.mmdb": data, "two.mmdb": data})
 			case "empty":
 				body = archiveData(t, "zip", map[string][]byte{"README": []byte("no database")})
+			case "broken-pointers", "broken-search-tree":
+				body, err = os.ReadFile(
+					"../../testdata/test-data/MaxMind-DB-test-" + format + "-24.mmdb",
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			endpoint := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					if strings.HasPrefix(format, "http-gzip-") {
+						w.Header().Set("Content-Encoding", "gzip")
+					}
 					if format == "large" {
 						w.Header().Set("Content-Length", "1073741825")
 					}
@@ -272,6 +297,14 @@ func TestInstallURLPreservesExistingOnFailure(t *testing.T) {
 			if err := os.WriteFile(path, data, 0o600); err != nil {
 				t.Fatal(err)
 			}
+			if err := m.LoadDatabase(path); err != nil {
+				t.Fatal(err)
+			}
+			before, generation, _ := m.Snapshot("import.mmdb")
+			var original any
+			if err := before.Lookup(netip.MustParseAddr("1.0.0.1")).Decode(&original); err != nil {
+				t.Fatal(err)
+			}
 			result := m.InstallURL(t.Context(), dir, "import.mmdb", endpoint.URL, true, nil)
 			if result.Error == "" || result.Updated {
 				t.Fatalf("invalid download installed: %+v", result)
@@ -279,6 +312,17 @@ func TestInstallURLPreservesExistingOnFailure(t *testing.T) {
 			current, err := os.ReadFile(path)
 			if err != nil || !bytes.Equal(current, data) {
 				t.Fatalf("existing database was changed: %v", err)
+			}
+			after, currentGeneration, _ := m.Snapshot("import.mmdb")
+			if after != before || currentGeneration != generation {
+				t.Fatal("failed import replaced the loaded reader")
+			}
+			var record any
+			if err := after.Lookup(netip.MustParseAddr("1.0.0.1")).Decode(&record); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(record, original) {
+				t.Fatal("failed import changed lookup results")
 			}
 			entries, err := os.ReadDir(dir)
 			if err != nil || len(entries) != 2 {
@@ -393,5 +437,82 @@ func TestDownloadRedirectPolicyAndErrors(t *testing.T) {
 	)
 	if result.Error != "download returned HTTP 403" {
 		t.Fatalf("HTTP error included a URL or response body: %+v", result)
+	}
+}
+
+func TestInstallURLRedactsRequestFailures(t *testing.T) {
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(
+			w,
+			r,
+			"http://user:redirect-secret@127.0.0.1/private?signature=target-secret",
+			http.StatusFound,
+		)
+	}))
+	defer redirect.Close()
+	for _, endpoint := range []string{closed.URL, redirect.URL} {
+		m, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = m.Close() }()
+		dir := t.TempDir()
+		result := m.InstallURL(
+			t.Context(),
+			dir,
+			"db.mmdb",
+			endpoint+"/path-secret?signature=query-secret",
+			false,
+			nil,
+		)
+		if result.Error != "download request failed: check the URL and network connection" ||
+			result.Updated {
+			t.Fatalf("request failure was not redacted: %+v", result)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "db.mmdb")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("failed request installed a database")
+		}
+	}
+}
+
+func TestHTTPGzipDownloadLimit(t *testing.T) {
+	body := archiveData(t, "gzip", map[string][]byte{"body": []byte("decoded")})
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		if r.URL.Path == "/large" {
+			w.Header().Set("Content-Length", "1073741825")
+		} else {
+			w.(http.Flusher).Flush()
+		}
+		_, _ = w.Write(body)
+	}))
+	defer endpoint.Close()
+	m, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Close() }()
+	result := m.InstallURL(t.Context(), t.TempDir(), "db.mmdb", endpoint.URL+"/large", false, nil)
+	if result.Error != "database download exceeds 1 GiB" || result.Updated {
+		t.Fatalf("encoded size was not checked before decoding: %+v", result)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, endpoint.URL, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := downloadClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	encoded, err := io.ReadAll(response.Body)
+	if err != nil || !bytes.Equal(encoded, body) || response.ContentLength != -1 {
+		t.Fatalf(
+			"chunked response must expose encoded bytes to the copy limit: %q, %v",
+			encoded,
+			err,
+		)
 	}
 }

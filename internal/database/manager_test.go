@@ -510,6 +510,7 @@ func TestWatchDatabaseReplacement(t *testing.T) {
 	path := filepath.Join(dir, "database.mmdb")
 	install := func(fixture string) {
 		t.Helper()
+		//nolint:gosec // Callers pass fixed paths to bundled test fixtures.
 		data, err := os.ReadFile(fixture)
 		if err != nil {
 			t.Fatal(err)

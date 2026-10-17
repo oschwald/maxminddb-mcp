@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enforce URL download limits before HTTP gzip decoding and check ZIP directory limits before allocating entry metadata.
 - Exclude IPv4 alias subtrees from summary coverage when a query starts below the alias root. Preserve independent IPv6 records in custom databases.
 - Allow slow downloads and update lock waits to finish without a fixed total deadline. Caller cancellation and shutdown still interrupt network operations and lock waits.
 - Release newly created iterators when their first page fails or is canceled. Reclaim expired iterators before admitting new queries.
