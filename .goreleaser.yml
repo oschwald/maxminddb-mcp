@@ -217,7 +217,7 @@ release:
     
     **Go Install:**
     ```bash
-    go install github.com/oschwald/maxminddb-mcp/cmd/maxminddb-mcp@{{ .Version }}
+    go install github.com/oschwald/maxminddb-mcp/cmd/maxminddb-mcp@v{{ .Version }}
     ```
     
     **Docker:**
