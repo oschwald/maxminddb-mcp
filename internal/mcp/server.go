@@ -47,7 +47,8 @@ Continue lookup pages with the same network or endpoints and database, the retur
 Omit filters and filter_mode to keep the original query. Repeat fields on each page. Stop when has_more is false.
 On iterator_expired, resume with the latest token. If the database build changed, start a new query.
 On iterator_limit, continue an existing iterator or wait for idle queries to expire.
-If no_databases is returned, check server logs for loading or download status.
+If no_databases is returned, call list_databases for download status and setup instructions.
+If its status is downloading, tell the user to wait and check again later. Do not start another update.
 When available, update_databases downloads and replaces database files.`
 
 // New creates a new MCP server instance.
@@ -138,14 +139,12 @@ func (s *Server) registerTools() {
 	// list_databases tool
 	listDBTool := mcp.NewTool("list_databases",
 		mcp.WithToolTitle("List databases"),
-		mcp.WithDescription("List all available MaxMind databases"),
+		mcp.WithDescription("List available databases, download status, and setup instructions"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
-		mcp.WithOutputSchema[struct {
-			Databases []*database.Info `json:"databases"`
-		}](),
+		mcp.WithOutputSchema[databaseListResult](),
 	)
 	s.mcp.AddTool(listDBTool, s.handleListDatabases)
 
@@ -357,13 +356,48 @@ func (s *Server) handleListDatabases(
 	_ mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	databases := s.dbManager.ListDatabases()
+	if databases == nil {
+		databases = []*database.Info{}
+	}
 	// Sort databases by name for deterministic ordering
 	slices.SortFunc(databases, func(a, b *database.Info) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
-	return mcp.NewToolResultStructuredOnly(map[string]any{
-		"databases": databases,
-	}), nil
+	result := databaseListResult{
+		Databases: databases,
+		Status:    "ready",
+		Message:   "Databases are ready for queries.",
+	}
+	if s.updater != nil {
+		status := s.updater.Status()
+		result.Update = &status
+	}
+	if len(databases) == 0 {
+		result.Status = "empty"
+		result.Message = "No MMDB files are loaded. Select a folder containing MMDB files in extension settings, or check the configured database paths."
+		if result.Update != nil {
+			switch result.Update.State {
+			case "pending", "updating":
+				result.Status = "downloading"
+				result.Message = "Initial database download is in progress. Wait and call list_databases again."
+			case "failed":
+				result.Status = "error"
+				result.Message = "Database download failed. Check your MaxMind credentials, editions, and folder permissions in extension settings or the server configuration, then call update_databases."
+			default:
+				result.Message = "No databases are loaded. Call update_databases to download the configured editions."
+			}
+		}
+	} else if result.Update != nil && result.Update.State == "failed" {
+		result.Message = "Existing databases are ready, but the last update failed. Check the update errors before retrying update_databases."
+	}
+	return mcp.NewToolResultStructuredOnly(result), nil
+}
+
+type databaseListResult struct {
+	Update    *database.UpdateStatus `json:"update,omitempty"`
+	Status    string                 `json:"status"`
+	Message   string                 `json:"message"`
+	Databases []*database.Info       `json:"databases"`
 }
 
 // handleUpdateDatabases handles the update_databases tool.

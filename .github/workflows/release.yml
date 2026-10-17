@@ -6,13 +6,19 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   goreleaser:
     name: GoReleaser
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     
     steps:
       - name: Checkout code
@@ -31,6 +37,15 @@ jobs:
         with:
           platforms: arm64
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24.22.0'
+          cache: npm
+
+      - name: Install packaging tools
+        run: npm ci
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.4.1
       
@@ -46,6 +61,9 @@ jobs:
       
       - name: Run tests
         run: go test -race -cover ./...
+
+      - name: Test installed extension
+        run: npm run test:extensions
       
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7.3.0
@@ -55,3 +73,36 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  registry:
+    name: Publish to MCP Registry
+    needs: goreleaser
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.2'
+
+      - name: Install registry publisher
+        run: go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1
+
+      - name: Set release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          jq --arg version "$version" '.version = $version | .packages[0].identifier = "ghcr.io/oschwald/maxminddb-mcp:\($version)"' server.json > server-release.json
+
+      - name: Authenticate and publish
+        run: |
+          publisher login github-oidc
+          publisher publish server-release.json

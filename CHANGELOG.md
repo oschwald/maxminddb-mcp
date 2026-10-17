@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configure MaxMind downloads or existing MMDB files through Claude Desktop extension settings, without a config file or CLI.
+- Build native MCPB extensions and experimental Claude plugin ZIPs with release binaries. Include them in release checksums.
+- Publish MCP Registry metadata from release CI and support automatic Homebrew tap updates after credential setup.
+- Report database readiness, active downloads, and update failures through `list_databases`.
 - Compare database answers within a bounded CIDR, with paginated changes, progress, cancellation, and tokens bound to loaded database generations.
 - Query inclusive start/end IP ranges with filters, field selection, and resumable pages, without duplicate network records.
 - Verify loaded databases on demand, with serialized execution and explicit cancellation behavior.

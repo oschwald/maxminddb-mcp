@@ -8,7 +8,8 @@ before:
     - go generate ./...
 
 builds:
-  - id: maxminddb-mcp
+  - &build
+    id: maxminddb-mcp
     binary: maxminddb-mcp
     main: ./cmd/maxminddb-mcp/main.go
     env:
@@ -16,7 +17,6 @@ builds:
     goos:
       - linux
       - windows
-      - darwin
       - freebsd
     goarch:
       - amd64
@@ -41,9 +41,18 @@ builds:
       - -X main.date={{.Date}}
     flags:
       - -trimpath
+    hooks:
+      post:
+        - 'node scripts/package-extension.mjs "{{ .Path }}" "{{ .Version }}" "{{ .Os }}" "{{ .Arch }}" dist'
+  - <<: *build
+    id: darwin
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    ignore: []
 
 archives:
   - id: default
+    ids: [maxminddb-mcp]
     formats:
       - tar.gz
       - zip
@@ -51,10 +60,21 @@ archives:
       - goos: windows
         formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+  - id: darwin
+    ids: [darwin]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: darwin-zip
+    ids: [darwin]
+    formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
+  extra_files:
+    - glob: dist/*.mcpb
+    - glob: dist/*_claude-plugin.zip
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -98,6 +118,7 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/oschwald/maxminddb-mcp
+      io.modelcontextprotocol.server.name: io.github.oschwald/maxminddb-mcp
 
   - <<: *container
     id: amd64
@@ -135,6 +156,18 @@ nfpms:
       - src: CHANGELOG.md
         dst: /usr/share/doc/maxminddb-mcp/CHANGELOG.md
 
+homebrew_casks:
+  - name: maxminddb-mcp
+    ids: [darwin]
+    repository:
+      owner: oschwald
+      name: homebrew-tap
+      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
+    skip_upload: '{{ if .Env.HOMEBREW_TAP_TOKEN }}auto{{ else }}true{{ end }}'
+    homepage: https://github.com/oschwald/maxminddb-mcp
+    description: Query MaxMind databases through MCP
+    binaries: [maxminddb-mcp]
+
 release:
   github:
     owner: oschwald
@@ -142,6 +175,9 @@ release:
   draft: false
   prerelease: auto
   mode: replace
+  extra_files:
+    - glob: dist/*.mcpb
+    - glob: dist/*_claude-plugin.zip
   header: |
     ## MaxMindDB MCP Server {{ .Version }}
     
@@ -162,6 +198,15 @@ release:
     
   footer: |
     ### Installation
+
+    **Claude Desktop:** Download the `.mcpb` file for your OS and architecture.
+    Open Settings > Extensions > Advanced settings > Install Extension and select the file.
+    Enter your MaxMind account settings, or turn off downloads and choose a folder of MMDB files.
+    No terminal, Go installation, or config file is required.
+
+    **Standalone:** Download an archive or Linux package for your platform.
+    See the [installation guide](https://github.com/oschwald/maxminddb-mcp#installation)
+    for Codex, Claude Code, and the experimental Cowork plugin.
     
     **Go Install:**
     ```bash

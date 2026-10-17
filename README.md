@@ -6,7 +6,50 @@ Query GeoIP2, GeoLite2, and custom MMDB files through the Model Context Protocol
 
 This is an unofficial project and is not endorsed by MaxMind Inc. For official products and support, visit [maxmind.com](https://www.maxmind.com/).
 
-## Install
+Example prompts after connecting the server:
+
+- "Using MaxMindDB, identify the country and autonomous system for 8.8.8.8."
+- "Find the networks belonging to AS13335 within 1.0.0.0/8 in my ASN database."
+- "Which databases are available, and when were they built?"
+
+Answers depend on the databases you provide. IP geolocation is an estimate, not a device's precise location. ASN data describes network ownership, not the identity of a person using an address.
+
+## Installation
+
+### Claude Desktop
+
+Install and configure the server through Claude Desktop. You do not need Go, a terminal, or a config file.
+
+1. Download a `.mcpb` file from [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases).
+   Choose the file for your computer:
+
+   | Computer                      | Filename suffix       |
+   | ----------------------------- | --------------------- |
+   | Mac with Apple silicon        | `_darwin_arm64.mcpb`  |
+   | Mac with an Intel processor   | `_darwin_amd64.mcpb`  |
+   | Windows with an x64 processor | `_windows_amd64.mcpb` |
+   | Linux x64                     | `_linux_amd64.mcpb`   |
+   | Linux ARM64                   | `_linux_arm64.mcpb`   |
+
+2. In Claude Desktop, open **Settings → Extensions → Advanced settings → Install Extension** and select the file.
+3. Configure one of these choices in the extension settings:
+   - **Download databases:** Leave **Download and update MaxMind databases** enabled. Enter your MaxMind account ID and license key. The default editions are `GeoLite2-City` and `GeoLite2-ASN`. Change these for other editions available to your account. Leave **Database folder** blank to use the application cache, or select a writable folder.
+   - **Use existing files:** Turn off downloads and select the **Database folder** containing your MMDB files. Account settings are ignored in this mode.
+4. Enable the extension and ask: "Using MaxMindDB, list my databases and look up 8.8.8.8."
+
+The initial download runs in the background. Claude can check its status with `list_databases`. You can change the settings later in the same Extensions panel. Restart the extension after changing settings if Claude has not restarted it automatically.
+
+Claude stores the license key as a sensitive setting. Downloaded files stay outside the extension, so replacing the extension does not remove them. The default download directory is `maxminddb-mcp/databases` inside the OS user cache directory. No databases or MaxMind credentials are bundled. Obtain credentials from your [MaxMind account](https://www.maxmind.com/en/accounts/current/license-key).
+
+Install the matching `.mcpb` from a newer release to upgrade. GitHub downloads do not enable automatic extension updates. Directory-listed extensions have a separate update mechanism. See [Claude's desktop extension documentation](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
+
+### Standalone executable
+
+Download an archive for your OS and architecture from [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases), extract it, and place the executable on your PATH. Linux users can also install the `.deb`, `.rpm`, or `.apk` release package. Releases include SHA-256 hashes in `checksums.txt`.
+
+Configure the executable below, then follow the [client instructions](#connect-a-client). The Go toolchain is only needed when building from source.
+
+### Build from source
 
 Use Go 1.26 or later. The module selects Go 1.27.2 for builds.
 
@@ -27,7 +70,7 @@ The test fixture generator uses Go 1.27 and a pinned prerelease of `mmdbwriter/v
 
 ## Configure
 
-Create `~/.config/maxminddb-mcp/config.toml`. Choose one mode.
+Claude Desktop extension users can skip this section. For a standalone installation, create `~/.config/maxminddb-mcp/config.toml` and choose one mode, or use [environment settings](#configuration-without-a-file).
 
 ### Download from MaxMind
 
@@ -48,7 +91,7 @@ database_dir = "~/.cache/maxminddb-mcp/databases"
 
 Keep files containing credentials readable only by their owner, for example with `chmod 600 config.toml`.
 
-When no databases are loaded, an initial download starts in the background. MCP requests can run during that download. Until it finishes, `list_databases` can return an empty list. Updates have no fixed total deadline. Downloads and lock waits honor caller cancellation or server shutdown.
+When no databases are loaded, an initial download starts in the background. MCP requests can run during that download. Until it finishes, `list_databases` returns an empty list with `status: "downloading"`. It also reports download failures and corrective actions. Updates have no fixed total deadline. Downloads and lock waits honor caller cancellation or server shutdown.
 
 When `auto_update` is true, the server checks all configured editions in the background at startup, then on schedule. This also downloads missing editions when other databases are already installed. `update_databases` supports manual updates. Downloads use a unique temporary file and must pass checksum and MMDB validation before replacing the installed file. Missing or changed files are detected from their actual contents. Old `.checksums` files are ignored. Server processes sharing a database directory coordinate updates through per-edition `.mmdb.lock` files. Do not delete these lock files while a server is running. Other update programs must use separate directories or run when these servers are stopped.
 
@@ -80,6 +123,20 @@ The server reads `AccountID`, `LicenseKey`, `EditionIDs`, `DatabaseDirectory`, a
 
 If `config_path` is omitted, the server searches the user GeoIP.conf, `/etc/GeoIP.conf`, and `/usr/local/etc/GeoIP.conf`, in that order.
 
+### Configuration without a file
+
+The Desktop extension passes these environment settings to the executable. Other clients can use them too:
+
+| Variable                         | Meaning                                                                                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `MAXMINDDB_MCP_DOWNLOAD_ENABLED` | `true` for MaxMind downloads, `false` for existing MMDB files                                                                       |
+| `MAXMINDDB_MCP_DATABASE_DIR`     | One database folder. Required for existing files. Downloads default to the OS user cache directory under `maxminddb-mcp/databases`. |
+| `MAXMINDDB_MCP_ACCOUNT_ID`       | Positive account ID, required for downloads                                                                                         |
+| `MAXMINDDB_MCP_LICENSE_KEY`      | License key, required for downloads                                                                                                 |
+| `MAXMINDDB_MCP_EDITIONS`         | Comma- or whitespace-separated editions. Defaults to `GeoLite2-City,GeoLite2-ASN`.                                                  |
+
+Setting `MAXMINDDB_MCP_DOWNLOAD_ENABLED` selects this configuration source and skips automatic config-file discovery. Do not also set a nonempty `MAXMINDDB_MCP_CONFIG`. Download mode checks for updates every 24 hours. Local-file mode does not download anything. Use a TOML file for multiple folders or other advanced settings.
+
 ### Config discovery and defaults
 
 An explicit `MAXMINDDB_MCP_CONFIG` must point to an existing `.toml` file or a file named `GeoIP.conf`. A missing explicit file is an error. Otherwise, the server searches:
@@ -106,6 +163,24 @@ This is a local **stdio** server. Configure your client to launch the installed 
 
 ### Codex
 
+After installing the executable on PATH and configuring it in a default location:
+
+```bash
+codex mcp add maxminddb -- maxminddb-mcp
+codex mcp list
+```
+
+For an existing database folder, no server config file is needed:
+
+```bash
+codex mcp add maxminddb \
+  --env MAXMINDDB_MCP_DOWNLOAD_ENABLED=false \
+  --env MAXMINDDB_MCP_DATABASE_DIR=/absolute/path/to/databases \
+  -- maxminddb-mcp
+```
+
+For an explicit executable and config file:
+
 ```bash
 codex mcp add maxminddb \
   --env MAXMINDDB_MCP_CONFIG=/absolute/path/to/config.toml \
@@ -124,13 +199,28 @@ See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend
 
 ### Claude Code
 
+After installing the executable on PATH and configuring it in a default location:
+
 ```bash
-claude mcp add \
+claude mcp add --scope user --transport stdio maxminddb -- maxminddb-mcp
+claude mcp list
+```
+
+For an explicit executable and config file:
+
+```bash
+claude mcp add --scope user \
   --env MAXMINDDB_MCP_CONFIG=/absolute/path/to/config.toml \
   --transport stdio maxminddb -- /absolute/path/to/maxminddb-mcp
 ```
 
 See the [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
+
+### Claude Cowork plugin (experimental)
+
+Releases also include a `_claude-plugin.zip` for each extension platform. It contains the same executable and settings as the MCPB. In Cowork, open **Customize → Plugins** and upload the matching ZIP as a custom plugin. Configure its settings before using the tools.
+
+This package follows Claude's plugin format, but Cowork installation and its settings UI still need manual validation. Use the MCPB for Claude Desktop chat. A local MCP plugin does not provide tools to Claude web or mobile. See [Claude's plugin documentation](https://support.claude.com/en/articles/13837440-use-plugins-in-claude).
 
 ### Zed
 
@@ -283,6 +373,8 @@ Numeric equality and ordering compare decoded MMDB integers and JSON numbers wit
 ### `list_databases`
 
 Accepts no arguments. Returns `databases`, sorted by filename. Each entry contains `name`, `type`, `description`, `last_updated`, and file `size` in bytes. Type, English description, and build time come from MMDB metadata. `last_updated` is the build time, not the file's modification time.
+
+The result also includes `status` and a human-readable `message`. Status is `ready`, `downloading`, `empty`, or `error`. When downloads are configured, `update` reports `pending`, `updating`, `idle`, or `failed` and the most recent per-edition results. Existing databases remain available if an update fails. While the initial download is active, wait and check again instead of starting another update.
 
 ### `compare_databases`
 

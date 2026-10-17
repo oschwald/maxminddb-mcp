@@ -89,8 +89,7 @@ func run(ctx context.Context, cfg *config.Config, input io.Reader, output io.Wri
 func printHelp() {
 	fmt.Printf(`MaxMindDB MCP Server %s
 
-A powerful Model Context Protocol (MCP) server that provides comprehensive 
-geolocation and network intelligence through MaxMindDB databases.
+Query GeoIP2, GeoLite2, and custom MMDB databases through MCP.
 
 Usage:
   maxminddb-mcp [flags]
@@ -104,11 +103,21 @@ Environment Variables:
   MAXMINDDB_MCP_LOG_LEVEL   Logging level (debug|info|warn|error)
   MAXMINDDB_MCP_LOG_FORMAT  Log format (text|json)
 
+Configuration without a file (also used by Claude Desktop extension settings):
+  MAXMINDDB_MCP_DOWNLOAD_ENABLED  true: download databases, false: use local files
+  MAXMINDDB_MCP_DATABASE_DIR      Database folder (required for local files)
+  MAXMINDDB_MCP_ACCOUNT_ID        MaxMind account ID (required for downloads)
+  MAXMINDDB_MCP_LICENSE_KEY       MaxMind license key (required for downloads)
+  MAXMINDDB_MCP_EDITIONS          Comma-separated editions (default: GeoLite2-City,GeoLite2-ASN)
+
+Do not combine MAXMINDDB_MCP_CONFIG with MAXMINDDB_MCP_DOWNLOAD_ENABLED.
+
 Configuration:
-  The server looks for configuration in this order:
+  Without MAXMINDDB_MCP_DOWNLOAD_ENABLED, the server searches in this order:
   1. MAXMINDDB_MCP_CONFIG environment variable
   2. ~/.config/maxminddb-mcp/config.toml
-  3. /etc/GeoIP.conf or ~/.config/maxminddb-mcp/GeoIP.conf
+  3. ~/.config/maxminddb-mcp/GeoIP.conf
+  4. /etc/GeoIP.conf
 
 For more information, visit: https://github.com/oschwald/maxminddb-mcp
 
@@ -210,7 +219,11 @@ func logStartupSummary(cfg *config.Config, dbManager *database.Manager, autoUpda
 			dbNames[i] = db.Name
 		}
 		slog.Info("Loaded databases", "databases", dbNames)
+	} else if cfg.Mode == config.ModeDirectory {
+		slog.Warn(
+			"No MMDB files found: select a folder containing MMDB files in extension settings or the server configuration",
+		)
 	} else {
-		slog.Warn("No databases loaded - server may not function correctly")
+		slog.Info("Initial database download is pending: call list_databases for status")
 	}
 }

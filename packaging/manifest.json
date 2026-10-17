@@ -1,0 +1,72 @@
+{
+  "manifest_version": "0.3",
+  "name": "maxminddb-mcp",
+  "display_name": "MaxMindDB",
+  "version": "0.0.0",
+  "description": "Look up IP locations and network ownership in local MaxMind databases.",
+  "long_description": "Query GeoIP2, GeoLite2, or custom MMDB files. Use your MaxMind account to download and update databases, or select a folder containing existing files. Configure everything in the extension settings. Databases and credentials are not included. This is an unofficial project, not endorsed by MaxMind.",
+  "author": {
+    "name": "Greg Oschwald",
+    "url": "https://github.com/oschwald"
+  },
+  "homepage": "https://github.com/oschwald/maxminddb-mcp",
+  "documentation": "https://github.com/oschwald/maxminddb-mcp#installation",
+  "support": "https://github.com/oschwald/maxminddb-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oschwald/maxminddb-mcp"
+  },
+  "license": "ISC",
+  "icon": "icon.png",
+  "keywords": ["geoip", "maxmind", "mmdb", "ip", "asn"],
+  "tools_generated": true,
+  "server": {
+    "type": "binary",
+    "entry_point": "server/maxminddb-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/maxminddb-mcp",
+      "env": {
+        "MAXMINDDB_MCP_CONFIG": "",
+        "MAXMINDDB_MCP_DOWNLOAD_ENABLED": "${user_config.download_enabled}",
+        "MAXMINDDB_MCP_DATABASE_DIR": "${user_config.database_dir}",
+        "MAXMINDDB_MCP_ACCOUNT_ID": "${user_config.account_id}",
+        "MAXMINDDB_MCP_LICENSE_KEY": "${user_config.license_key}",
+        "MAXMINDDB_MCP_EDITIONS": "${user_config.editions}"
+      }
+    }
+  },
+  "user_config": {
+    "download_enabled": {
+      "type": "boolean",
+      "title": "Download and update MaxMind databases",
+      "description": "Download on first use and check for updates every 24 hours. Turn off to use existing MMDB files without a MaxMind account.",
+      "required": true,
+      "default": true
+    },
+    "database_dir": {
+      "type": "directory",
+      "title": "Database folder",
+      "description": "With downloads off, select the folder containing your MMDB files. With downloads on, leave blank to use the application cache or choose a writable folder. Files are kept outside the extension when it is upgraded.",
+      "default": ""
+    },
+    "account_id": {
+      "type": "string",
+      "title": "MaxMind account ID",
+      "description": "Required when downloads are on. Find the account ID in your MaxMind account. Leave blank when using existing files.",
+      "default": ""
+    },
+    "license_key": {
+      "type": "string",
+      "title": "MaxMind license key",
+      "description": "Required when downloads are on. Claude stores this value as a sensitive setting. Leave blank when using existing files.",
+      "sensitive": true,
+      "default": ""
+    },
+    "editions": {
+      "type": "string",
+      "title": "Database editions",
+      "description": "Comma-separated edition IDs to download. Use editions available to your MaxMind account. Ignored when downloads are off.",
+      "default": "GeoLite2-City,GeoLite2-ASN"
+    }
+  }
+}

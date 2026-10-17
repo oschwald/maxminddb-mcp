@@ -1,0 +1,57 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.oschwald/maxminddb-mcp",
+  "title": "MaxMindDB",
+  "description": "Query IP locations and network ownership in GeoIP2, GeoLite2, and custom MMDB databases.",
+  "repository": {
+    "url": "https://github.com/oschwald/maxminddb-mcp",
+    "source": "github"
+  },
+  "version": "0.0.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/oschwald/maxminddb-mcp:0.0.0",
+      "transport": { "type": "stdio" },
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--mount",
+          "value": "type=volume,source=maxminddb-mcp-data,target=/data"
+        },
+        {
+          "type": "named",
+          "name": "--env",
+          "value": "MAXMINDDB_MCP_CONFIG="
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "MAXMINDDB_MCP_DOWNLOAD_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "MAXMINDDB_MCP_DATABASE_DIR",
+          "value": "/data"
+        },
+        {
+          "name": "MAXMINDDB_MCP_ACCOUNT_ID",
+          "description": "Your MaxMind account ID.",
+          "isRequired": true,
+          "format": "number"
+        },
+        {
+          "name": "MAXMINDDB_MCP_LICENSE_KEY",
+          "description": "A MaxMind license key with access to the selected editions.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "MAXMINDDB_MCP_EDITIONS",
+          "description": "Comma-separated edition IDs available to your account.",
+          "default": "GeoLite2-City,GeoLite2-ASN"
+        }
+      ]
+    }
+  ]
+}
