@@ -9,8 +9,12 @@ permissions:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     
     steps:
       - name: Checkout code
@@ -30,10 +34,12 @@ jobs:
         run: go test -race -cover ./...
 
       - name: Test fixture generator
+        if: runner.os == 'Linux'
         run: go test ./...
         working-directory: testdata
 
       - name: Check vulnerabilities
+        if: runner.os == 'Linux'
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   build:

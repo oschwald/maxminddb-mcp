@@ -9,6 +9,25 @@ import (
 	"time"
 )
 
+func TestStdioEOF(t *testing.T) {
+	server := testServer(t)
+	input, writer := io.Pipe()
+	defer func() { _ = input.Close() }()
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(t.Context(), input, io.Discard) }()
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stdio server did not stop at EOF")
+	}
+}
+
 func TestStdioProtocol(t *testing.T) {
 	for _, protocol := range []string{"2024-11-05", "2025-11-25", "2026-07-28"} {
 		t.Run(protocol, func(t *testing.T) {

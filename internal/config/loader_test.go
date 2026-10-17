@@ -11,6 +11,7 @@ import (
 func TestLoadGeoIPFromTOML(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	geoip := filepath.Join(home, "GeoIP.conf")
 	if err := os.WriteFile(
 		geoip,

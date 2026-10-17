@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -270,7 +271,17 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 			absPath,
 		)
 	}
-	reader, err := maxminddb.Open(path)
+	var reader *maxminddb.Reader
+	if runtime.GOOS == "windows" {
+		// Windows mappings prevent replacement while readers retain the old database.
+		var data []byte
+		data, err = os.ReadFile(path)
+		if err == nil {
+			reader, err = maxminddb.OpenBytes(data)
+		}
+	} else {
+		reader, err = maxminddb.Open(path)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to open MMDB file %s: %w", path, err)
 	}

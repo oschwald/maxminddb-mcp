@@ -1,8 +1,10 @@
 package database
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -435,5 +437,77 @@ func TestMetadataAndDuplicateNames(t *testing.T) {
 	); !ok || got.Path != renamed ||
 		len(manager.ListDatabases()) != 1 {
 		t.Fatal("duplicate load or removal changed the original database")
+	}
+}
+
+func TestWatchDatabaseReplacement(t *testing.T) {
+	dir := t.TempDir()
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	path := filepath.Join(dir, "database.mmdb")
+	install := func(fixture string) {
+		t.Helper()
+		data, err := os.ReadFile(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		temporary := filepath.Join(dir, "replacement.tmp")
+		//nolint:gosec // The directory comes from t.TempDir.
+		if err := os.WriteFile(temporary, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(temporary, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	install(testDBPath)
+	if err := manager.LoadDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.WatchDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+	manager.StartWatching()
+	old, ok := manager.GetReader("database.mmdb")
+	if !ok {
+		t.Fatal("initial database was not loaded")
+	}
+	ip := netip.MustParseAddr("81.2.69.160")
+	var before map[string]any
+	if err := old.Lookup(ip).Decode(&before); err != nil || len(before) == 0 {
+		t.Fatalf("fixture lookup failed: %v", err)
+	}
+	waitFor := func(description string, ready func() bool) {
+		t.Helper()
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for !ready() {
+			select {
+			case <-ticker.C:
+			case <-deadline.C:
+				t.Fatalf("watcher did not detect %s", description)
+			}
+		}
+	}
+	install("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	waitFor("replacement", func() bool {
+		reader, ok := manager.GetReader("database.mmdb")
+		return ok && reader.Metadata.DatabaseType == "GeoLite2-ASN"
+	})
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("removal", func() bool {
+		_, ok := manager.GetReader("database.mmdb")
+		return !ok
+	})
+	var after map[string]any
+	if err := old.Lookup(ip).Decode(&after); err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("replacement invalidated the retained reader: %v", err)
 	}
 }

@@ -39,6 +39,8 @@ go test ./...
 
 Tests use bundled MMDB fixtures and local HTTP servers. They do not require a MaxMind account or databases in your home directory. Add regression tests for pagination, filters, config loading, and download failures when changing those paths. Prefer assertions about returned data over tests that only check for a non-nil result. Aim for at least 80% coverage in changed packages, while prioritizing meaningful cases.
 
+CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. Fixture generator tests and vulnerability checks run on Linux.
+
 The stdio tests exercise the legacy initialize handshake and current per-request protocol metadata. To run them with the startup and shutdown tests:
 
 ```bash
