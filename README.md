@@ -270,6 +270,19 @@ Numeric equality and ordering compare decoded MMDB integers and JSON numbers wit
 
 Accepts no arguments. Returns `databases`, sorted by filename. Each entry contains `name`, `type`, `description`, `last_updated`, and file `size` in bytes. Type, English description, and build time come from MMDB metadata. `last_updated` is the build time, not the file's modification time.
 
+### `inspect_database`
+
+Requires `database`. Optional `sample_size` ranges from 1 to 1000 and defaults
+to 100. Returns all standard MMDB metadata and observed field paths, types, and
+scalar examples. Field paths follow the same rules as filters and field selection.
+The sample visits records in database order, so it is not statistically representative.
+`schema_complete` is always false. Absence from a sample does not prove a field is absent.
+
+Inspection returns at most 256 paths and visits at most 10,000 values to a depth
+of 16. `fields_truncated` reports these limits or keys that field paths cannot
+address. String examples are limited to 128 characters. Arrays and objects have
+type information and child paths instead of complete example values.
+
 ### `update_databases`
 
 Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Returns a `results` array with per-edition `database`, `updated`, `last_update`, and optional `size` or `error`. Any failed edition makes the tool result an MCP error while preserving all edition results.

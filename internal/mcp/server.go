@@ -106,6 +106,7 @@ func (s *Server) registerTools() {
 	)
 	s.mcp.AddTool(lookupIPTool, s.handleLookupIP)
 	s.registerBatchTool()
+	s.registerInspectionTool()
 
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(

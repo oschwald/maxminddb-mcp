@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Inspect full database metadata and bounded samples of field paths, types, and examples with `inspect_database`.
+
 - Select fields from IP, batch, and network lookup results. Support scalar and array records, root-value filters, and array indexes in field paths.
 
 - Add `lookup_ips` for bounded batches with ordered per-address results and errors.
