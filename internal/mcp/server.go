@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/netip"
 	"reflect"
@@ -35,10 +36,11 @@ func New(
 	dbManager *database.Manager,
 	updater *database.Updater,
 	iterMgr *iterator.Manager,
+	version string,
 ) *Server {
 	mcpServer := server.NewMCPServer(
 		"MaxMindDB Server",
-		"1.0.0",
+		version,
 		server.WithToolCapabilities(true),
 	)
 
@@ -56,8 +58,8 @@ func New(
 }
 
 // Serve starts the MCP server using stdio transport.
-func (s *Server) Serve() error {
-	return server.ServeStdio(s.mcp)
+func (s *Server) Serve(ctx context.Context, input io.Reader, output io.Writer) error {
+	return server.NewStdioServer(s.mcp).Listen(ctx, input, output)
 }
 
 // registerTools registers all MCP tools.

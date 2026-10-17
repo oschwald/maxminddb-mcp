@@ -26,7 +26,7 @@ func TestNew(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	if server == nil {
 		t.Fatal("Server should not be nil")
@@ -78,7 +78,7 @@ func TestNewWithUpdater(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, updater, iterMgr)
+	server := New(cfg, dbManager, updater, iterMgr, "test")
 
 	if server.updater != updater {
 		t.Error("Server updater should match input")
@@ -103,7 +103,7 @@ func TestLookupIPInSingleDatabase(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	ip, err := netip.ParseAddr("1.1.1.1")
 	if err != nil {
@@ -161,7 +161,7 @@ func TestLookupIPInAllDatabases(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	ip, err := netip.ParseAddr("1.1.1.1")
 	if err != nil {
@@ -192,7 +192,7 @@ func TestServe(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	// Test Serve method exists and doesn't panic
 	// Note: We can't easily test the actual serving without mocking stdio
@@ -218,7 +218,7 @@ func TestRegisterTools(t *testing.T) {
 	defer iterMgr.StopCleanup()
 
 	// This will call registerTools internally
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	if server.mcp == nil {
 		t.Error("MCP server should be initialized after registerTools")
@@ -239,7 +239,7 @@ func TestRegisterTools(t *testing.T) {
 		t.Fatalf("Failed to create updater: %v", err)
 	}
 
-	server = New(cfg, dbManager, updater, iterMgr)
+	server = New(cfg, dbManager, updater, iterMgr, "test")
 	if server.mcp == nil {
 		t.Error("MCP server should be initialized with updater tools")
 	}
@@ -256,7 +256,7 @@ func TestServerStructFields(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	// Test all fields are set correctly
 	if server.config != cfg {
@@ -298,7 +298,7 @@ func TestServerMethods(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	// Test helper methods exist and work
 	ip, _ := netip.ParseAddr("8.8.8.8")
@@ -339,7 +339,7 @@ func TestServerWithDifferentModes(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 	if server == nil {
 		t.Error("Server should be created for directory mode")
 	}
@@ -354,7 +354,7 @@ func TestServerWithDifferentModes(t *testing.T) {
 		Endpoint:    "https://updates.maxmind.com",
 	}
 
-	server = New(cfg, dbManager, nil, iterMgr)
+	server = New(cfg, dbManager, nil, iterMgr, "test")
 	if server == nil {
 		t.Error("Server should be created for maxmind mode")
 	}
@@ -366,7 +366,7 @@ func TestServerWithDifferentModes(t *testing.T) {
 		DatabaseDir: t.TempDir(),
 	}
 
-	server = New(cfg, dbManager, nil, iterMgr)
+	server = New(cfg, dbManager, nil, iterMgr, "test")
 	if server == nil {
 		t.Error("Server should be created for geoip_compat mode")
 	}
@@ -390,7 +390,7 @@ func TestServerConcurrency(t *testing.T) {
 	iterMgr := iterator.New(30*time.Minute, 5*time.Minute)
 	defer iterMgr.StopCleanup()
 
-	server := New(cfg, dbManager, nil, iterMgr)
+	server := New(cfg, dbManager, nil, iterMgr, "test")
 
 	// Test concurrent access to server methods
 	done := make(chan bool, 3)

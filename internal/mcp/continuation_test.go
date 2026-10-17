@@ -24,7 +24,7 @@ func testServer(t *testing.T) *Server {
 	}
 	manager := iterator.New(time.Minute, time.Second)
 	t.Cleanup(manager.StopCleanup)
-	return New(createTestMCPConfig(t), db, nil, manager)
+	return New(createTestMCPConfig(t), db, nil, manager, "test")
 }
 
 func networkRequest(args map[string]any) sdk.CallToolRequest {

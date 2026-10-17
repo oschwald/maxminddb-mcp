@@ -86,50 +86,38 @@ func (u *Updater) UpdateDatabase(ctx context.Context, edition string) (UpdateRes
 	return result, nil
 }
 
-// StartScheduledUpdates starts a goroutine that periodically updates databases.
-func (u *Updater) StartScheduledUpdates(ctx context.Context) {
+// RunUpdates performs an initial download if needed, then updates on schedule until canceled.
+func (u *Updater) RunUpdates(ctx context.Context) {
+	if len(u.manager.ListDatabases()) == 0 {
+		u.updateAndLog(ctx)
+	}
 	if !u.config.AutoUpdate {
 		return
 	}
-
-	go func() {
-		ticker := time.NewTicker(u.config.UpdateIntervalDuration)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				results, err := u.UpdateAll(ctx)
-				if err != nil {
-					slog.Error("Scheduled update failed", "err", err)
-					continue
-				}
-
-				// Log update results
-				for _, result := range results {
-					if result.Error != "" {
-						slog.Error(
-							"Database update error",
-							"edition",
-							result.Database,
-							"error",
-							result.Error,
-						)
-					} else if result.Updated {
-						slog.Info(
-							"Database updated",
-							"edition",
-							result.Database,
-							"size",
-							result.Size,
-						)
-					}
-				}
-			}
+	ticker := time.NewTicker(u.config.UpdateIntervalDuration)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			u.updateAndLog(ctx)
 		}
-	}()
+	}
+}
+
+func (u *Updater) updateAndLog(ctx context.Context) {
+	results, err := u.UpdateAll(ctx)
+	if err != nil {
+		slog.Error("Database update failed", "err", err)
+	}
+	for _, result := range results {
+		if result.Error != "" {
+			slog.Error("Database update failed", "edition", result.Database, "error", result.Error)
+		} else if result.Updated {
+			slog.Info("Database updated", "edition", result.Database, "size", result.Size)
+		}
+	}
 }
 
 // updateDatabase performs the actual update (must be called with lock held).
