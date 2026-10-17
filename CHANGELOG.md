@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reuse readers for unchanged files while still loading replaced files and recovering unloaded databases.
+
 - Coordinate database updates across server processes with cancellable per-edition file locks.
 
 - Check for database updates at startup when automatic updates are enabled, including missing configured editions.

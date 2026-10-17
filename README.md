@@ -61,7 +61,7 @@ mode = "directory"
 paths = ["/absolute/path/to/databases"]
 ```
 
-The server loads MMDB files recursively and watches the directories present at startup. Restart the server after adding subdirectories. Database names are filenames, including `.mmdb`, and must be unique across configured directories. Duplicate names are rejected. On Windows, each loaded database is copied into memory so replacement does not invalidate active readers. Old copies remain until their readers are released.
+The server loads MMDB files recursively and watches the directories present at startup. Restart the server after adding subdirectories. Database names are filenames, including `.mmdb`, and must be unique across configured directories. Duplicate names are rejected. On Windows, each loaded database is copied into memory so replacement does not invalidate active readers. Old copies remain until their readers are released. Loading an unchanged file reuses its reader. File identity, size, and modification time determine whether a reload is needed.
 
 Replace databases by writing a separate file and renaming it into place. Active iterators retain their original reader. In-place writes can invalidate a memory-mapped file.
 

@@ -103,9 +103,31 @@ func TestUpdateRepairsMissingAndChangedFiles(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []string{"missing", "unchanged", "deleted", "corrupted"} {
+	for _, action := range []string{"missing", "unchanged", "unloaded", "stale", "deleted", "corrupted"} {
 		path := filepath.Join(dir, "GeoLite2-ASN.mmdb")
 		switch action {
+		case "unloaded":
+			updater.manager.RemoveDatabase("GeoLite2-ASN.mmdb")
+		case "stale":
+			old, err := os.ReadFile(testDBPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, content := range [][]byte{old, data} {
+				temporary := filepath.Join(dir, "replacement.tmp")
+				//nolint:gosec // The directory comes from t.TempDir.
+				if err := os.WriteFile(temporary, content, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(temporary, path); err != nil {
+					t.Fatal(err)
+				}
+				if bytes.Equal(content, old) {
+					if err := updater.manager.LoadDatabase(path); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 		case "deleted":
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
@@ -115,19 +137,25 @@ func TestUpdateRepairsMissingAndChangedFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		before, _ := updater.manager.GetReader("GeoLite2-ASN.mmdb")
 		results, err := updater.UpdateAll(t.Context())
 		if err != nil || len(results) != 1 || results[0].Error != "" {
 			t.Fatalf("%s: %+v, %v", action, results, err)
 		}
-		if results[0].Updated != (action != "unchanged") {
+		wantDownload := action == "missing" || action == "deleted" || action == "corrupted"
+		if results[0].Updated != wantDownload {
 			t.Fatalf("%s: wrong updated flag", action)
 		}
 		installed, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(installed, data) {
 			t.Fatalf("%s: installed file differs: %v", action, err)
 		}
-		if _, ok := updater.manager.GetReader("GeoLite2-ASN.mmdb"); !ok {
-			t.Fatal("download was not loaded")
+		after, ok := updater.manager.GetReader("GeoLite2-ASN.mmdb")
+		if !ok || after.Metadata.DatabaseType != "GeoLite2-ASN" {
+			t.Fatalf("%s: current database was not loaded", action)
+		}
+		if action == "unchanged" && after != before {
+			t.Fatal("unchanged update replaced its reader")
 		}
 	}
 	if downloads.Load() != 3 {

@@ -23,11 +23,12 @@ import (
 // Info holds metadata about a database.
 type Info struct {
 	LastUpdated time.Time `json:"last_updated"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Description string    `json:"description"`
-	Path        string    `json:"-"`
-	Size        int64     `json:"size"`
+	fileInfo    os.FileInfo
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Path        string `json:"-"`
+	Size        int64  `json:"size"`
 }
 
 // Manager handles MMDB database lifecycle.
@@ -271,6 +272,16 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 			absPath,
 		)
 	}
+	if previous := m.databases[absPath]; previous != nil && previous.fileInfo != nil &&
+		m.readers[absPath] != nil && os.SameFile(previous.fileInfo, info) &&
+		previous.fileInfo.Size() == info.Size() && previous.fileInfo.ModTime().Equal(info.ModTime()) {
+		return nil
+	}
+	fileInfo := info
+	// Resolve Windows file IDs before the path can refer to a replacement.
+	if !os.SameFile(info, info) {
+		fileInfo = nil
+	}
 	var reader *maxminddb.Reader
 	if runtime.GOOS == "windows" {
 		// Windows mappings prevent replacement while readers retain the old database.
@@ -287,6 +298,7 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 	}
 
 	dbInfo := &Info{
+		fileInfo:    fileInfo,
 		Name:        name, // Display name remains the base filename
 		Type:        reader.Metadata.DatabaseType,
 		Description: reader.Metadata.Description["en"],

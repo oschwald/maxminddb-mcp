@@ -367,15 +367,13 @@ func TestReloadDatabase(t *testing.T) {
 		t.Fatalf("Failed to load test database: %v", err)
 	}
 
-	// Get initial database info
+	initialReader, _ := manager.GetReader(testDBName)
 	databases := manager.ListDatabases()
 	if len(databases) != 1 {
 		t.Fatalf("Expected 1 database, got %d", len(databases))
 	}
 	initialTime := databases[0].LastUpdated
 
-	// Wait a bit and reload
-	time.Sleep(10 * time.Millisecond)
 	err = manager.LoadDatabase(testDBPath)
 	if err != nil {
 		t.Fatalf("Failed to reload test database: %v", err)
@@ -391,6 +389,68 @@ func TestReloadDatabase(t *testing.T) {
 	newTime := databases[0].LastUpdated
 	if !newTime.Equal(initialTime) {
 		t.Error("Expected same timestamp after reload of unchanged file")
+	}
+	if reader, _ := manager.GetReader(testDBName); reader != initialReader {
+		t.Error("unchanged file replaced its reader")
+	}
+}
+
+func TestReloadReplacedOrModifiedFile(t *testing.T) {
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	data, err := os.ReadFile(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "database.mmdb")
+	//nolint:gosec // The directory comes from t.TempDir.
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.LoadDatabase(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"replaced", "modified"} {
+		before, _ := manager.GetReader("database.mmdb")
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if action == "replaced" {
+			temporary := filepath.Join(dir, "replacement.tmp")
+			//nolint:gosec // The directory comes from t.TempDir.
+			if err := os.WriteFile(temporary, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(temporary, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(temporary, path); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			modified := info.ModTime().Add(time.Second)
+			if err := os.Chtimes(path, modified, modified); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := manager.LoadDatabase(path); err != nil {
+			t.Fatal(err)
+		}
+		after, _ := manager.GetReader("database.mmdb")
+		if after == before {
+			t.Fatalf("%s file retained its old reader", action)
+		}
+		if err := manager.LoadDatabase(path); err != nil {
+			t.Fatal(err)
+		}
+		if reader, _ := manager.GetReader("database.mmdb"); reader != after {
+			t.Fatalf("%s file reloaded twice", action)
+		}
 	}
 }
 
