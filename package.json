@@ -2,8 +2,8 @@
   "name": "maxminddb-mcp-dev",
   "private": true,
   "scripts": {
-    "format": "prettier --write \"*.md\"",
-    "format:check": "prettier --check \"*.md\"",
+    "format": "prettier --write \"*.md\" \"docs/*.md\"",
+    "format:check": "prettier --check \"*.md\" \"docs/*.md\"",
     "test:extensions": "node --test scripts/extension.test.mjs"
   },
   "devDependencies": {

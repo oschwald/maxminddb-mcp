@@ -2,7 +2,26 @@
 
 ## Setup
 
-Clone with fixtures, or initialize them in an existing checkout:
+### Build from source
+
+To install the executable with Go 1.26 or later (the module selects Go 1.27.2):
+
+```bash
+go install github.com/oschwald/maxminddb-mcp/cmd/maxminddb-mcp@latest
+```
+
+To build and test a checkout:
+
+```bash
+git clone --recurse-submodules https://github.com/oschwald/maxminddb-mcp.git
+cd maxminddb-mcp
+go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
+go test -race ./...
+```
+
+### Development setup
+
+In an existing checkout, initialize fixtures and install development dependencies:
 
 ```bash
 git submodule update --init --recursive
@@ -10,7 +29,7 @@ go mod download
 npm ci
 ```
 
-Use Go 1.27.2 for development and release builds. The runtime module requires Go 1.26. The fixture module requires Go 1.27 and uses a pinned `mmdbwriter/v2` prerelease.
+Use Go 1.27.2 for development and release builds. The runtime module requires Go 1.26. The fixture module requires Go 1.27 and uses a pinned `mmdbwriter/v2` prerelease. It is a separate module in `testdata`, not a runtime dependency.
 
 CI uses Node 24.22.0, Prettier 3.9.10, golangci-lint 2.15.0, and GoReleaser 2.18.3. Prettier is pinned in `package-lock.json`. Install the Go tools at those versions, or run them through [mise](https://mise.jdx.dev/):
 
@@ -51,7 +70,9 @@ Tests use bundled MMDB fixtures and local HTTP servers. They do not require a Ma
 
 CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. On each OS, the extension test builds, packs, and extracts native MCPB and OpenAI plugin packages. It applies Claude settings through the MCPB resolver and checks OpenAI config discovery in an isolated home directory. Both packages must perform an IP lookup over stdio. The test also checks external database retention, shared skill contents, and credential-safe configuration errors. Fixture generator tests and vulnerability checks run on Linux.
 
-The stdio tests cover all five supported protocol revisions, discovery-free modern requests, response identity and result types, invalid metadata, unsupported versions, progress, and cancellation notifications. To run them with the startup and shutdown tests:
+The stdio tests cover legacy initialization for `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`, plus discovery and direct requests for `2026-07-28`. They check response identity and metadata, result types, invalid metadata, unsupported versions, progress, and cancellation reaching active downloads. Protocol negotiation and transport behavior come from `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
+
+Use an MCP client for manual checks. A one-line pipe that closes stdin immediately can cancel a request before its response is written. To run the stdio tests with the startup and shutdown tests:
 
 ```bash
 go test -race ./internal/mcp ./cmd/maxminddb-mcp
@@ -113,7 +134,7 @@ GoReleaser updates the macOS cask in [oschwald/homebrew-tap](https://github.com/
 brew install --cask oschwald/tap/maxminddb-mcp
 ```
 
-The tap is initialized. Do not advertise the command as available until a release has populated it.
+The tap is populated by stable releases.
 
 Anthropic's extension directory is a separate submission and review process. CI publishes downloadable bundles, not an approved directory listing. These bundles are unsigned. Verify the downloaded bundle's execution and any OS security prompts on a clean desktop before submitting it. Directory approval or publisher certificates cannot be created by this repository's release workflow.
 
@@ -162,7 +183,7 @@ A page operation holds the iterator lock for its full duration. Stop pull cursor
 
 ## Changes and review
 
-Keep commits focused. Preserve existing commits after human review and add follow-up commits. Update README.md for public behavior, CLAUDE.md for development guidance, and CHANGELOG.md for release notes.
+Keep commits focused. Preserve existing commits after human review and add follow-up commits. Keep the README focused on installation and first use. Update the client, configuration, and tool guides under `docs/` for detailed public behavior, CLAUDE.md for development guidance, and CHANGELOG.md for release notes. README links to those guides must use absolute GitHub URLs because releases bundle the README without the guides.
 
 Before proposing a change, run the checks above and inspect the diff for generated files or credentials. For bug reports, include the OS, Go version, MCP client, sanitized config, reproduction steps, and relevant stderr logs. Report security issues privately to the maintainer.
 
