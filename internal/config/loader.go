@@ -39,6 +39,14 @@ func Paths() []string {
 
 // Load loads configuration from the first available config file.
 func Load() (*Config, error) {
+	if _, ok := os.LookupEnv("MAXMINDDB_MCP_DOWNLOAD_ENABLED"); ok {
+		if os.Getenv("MAXMINDDB_MCP_CONFIG") != "" {
+			return nil, errors.New(
+				"cannot combine MAXMINDDB_MCP_CONFIG with MAXMINDDB_MCP_DOWNLOAD_ENABLED: choose a config file or extension settings",
+			)
+		}
+		return loadEnvironment()
+	}
 	config := DefaultConfig()
 
 	configPaths := Paths()
