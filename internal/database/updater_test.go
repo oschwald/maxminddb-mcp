@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -195,6 +196,102 @@ func TestDownloadCancellation(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("download ignored cancellation")
+	}
+}
+
+func TestUpdateAcrossProcesses(t *testing.T) {
+	if dir := os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_DIR"); dir != "" {
+		manager, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = manager.Close() }()
+		cfg := config.DefaultConfig()
+		cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
+		cfg.MaxMind.DatabaseDir = dir
+		cfg.MaxMind.Endpoint = os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_ENDPOINT")
+		updater, err := NewUpdater(cfg, manager)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := t.Context()
+		blocked := os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_BLOCKED") == "true"
+		if blocked {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, 200*time.Millisecond)
+			defer cancel()
+		}
+		result, err := updater.UpdateDatabase(ctx, "GeoLite2-ASN")
+		if err != nil || result.Updated {
+			t.Fatalf("unexpected update: %+v, %v", result, err)
+		}
+		if blocked {
+			if !strings.Contains(result.Error, "lock database update: context deadline exceeded") {
+				t.Fatalf("expected cancellation while waiting for lock: %+v", result)
+			}
+		} else if result.Error != "" || len(manager.ListDatabases()) != 1 {
+			t.Fatalf("installed database was not loaded: %+v", result)
+		}
+		return
+	}
+
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+	var downloads atomic.Int32
+	handler := downloadHandler(t, data, hex.EncodeToString(sum[:]), &downloads)
+	started, release := make(chan struct{}), make(chan struct{})
+	updater := testUpdater(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/metadata") {
+			select {
+			case started <- struct{}{}:
+			case <-r.Context().Done():
+				return
+			}
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	finished := make(chan UpdateResult, 1)
+	go func() { result, _ := updater.UpdateDatabase(ctx, "GeoLite2-ASN"); finished <- result }()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("first download did not start")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runChild := func(blocked bool) {
+		t.Helper()
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^TestUpdateAcrossProcesses$")
+		cmd.Env = append(os.Environ(),
+			"MAXMINDDB_MCP_TEST_UPDATE_DIR="+updater.config.MaxMind.DatabaseDir,
+			"MAXMINDDB_MCP_TEST_UPDATE_ENDPOINT="+updater.config.MaxMind.Endpoint,
+			fmt.Sprintf("MAXMINDDB_MCP_TEST_UPDATE_BLOCKED=%t", blocked),
+		)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("child updater: %v\n%s", err, output)
+		}
+	}
+	runChild(true)
+	close(release)
+	result := <-finished
+	if result.Error != "" || !result.Updated {
+		t.Fatalf("first update failed: %+v", result)
+	}
+	runChild(false)
+	if downloads.Load() != 1 {
+		t.Fatalf("got %d downloads, want 1", downloads.Load())
 	}
 }
 

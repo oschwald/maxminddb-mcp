@@ -50,7 +50,7 @@ Keep files containing credentials readable only by their owner, for example with
 
 When no databases are loaded, an initial download starts in the background. MCP requests can run during that download. Until it finishes, `list_databases` can return an empty list. Each download has a five-minute deadline.
 
-When `auto_update` is true, the server checks all configured editions in the background at startup, then on schedule. This also downloads missing editions when other databases are already installed. `update_databases` supports manual updates. Downloads use a unique temporary file and must pass checksum and MMDB validation before replacing the installed file. Missing or changed files are detected from their actual contents. Old `.checksums` files are ignored.
+When `auto_update` is true, the server checks all configured editions in the background at startup, then on schedule. This also downloads missing editions when other databases are already installed. `update_databases` supports manual updates. Downloads use a unique temporary file and must pass checksum and MMDB validation before replacing the installed file. Missing or changed files are detected from their actual contents. Old `.checksums` files are ignored. Server processes sharing a database directory coordinate updates through per-edition `.mmdb.lock` files. Lock waits honor cancellation and the five-minute update deadline. Do not delete these lock files while a server is running. Other update programs must use separate directories or run when these servers are stopped.
 
 ### Use local MMDB files
 

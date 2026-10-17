@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/maxmind/geoipupdate/v8/client"
 	"github.com/oschwald/maxminddb-mcp/internal/config"
 
@@ -148,6 +149,22 @@ func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResu
 		return result
 	}
 	dbPath := filepath.Join(u.config.MaxMind.DatabaseDir, edition+".mmdb")
+	if err := os.MkdirAll(u.config.MaxMind.DatabaseDir, 0o750); err != nil {
+		result.Error = fmt.Sprintf("failed to create database directory: %v", err)
+		return result
+	}
+	// Keep the lock file so waiting processes always lock the same file.
+	fileLock := flock.New(dbPath + ".lock")
+	if _, err := fileLock.TryLockContext(ctx, 100*time.Millisecond); err != nil {
+		result.Error = fmt.Sprintf("lock database update: %v", err)
+		return result
+	}
+	defer func() {
+		if err := fileLock.Close(); err != nil {
+			slog.Error("Failed to unlock database update", "edition", edition, "err", err)
+		}
+	}()
+
 	currentMD5, err := databaseChecksum(dbPath)
 	if err != nil {
 		result.Error = fmt.Sprintf("read current database: %v", err)
@@ -169,12 +186,6 @@ func (u *Updater) updateDatabase(ctx context.Context, edition string) UpdateResu
 		if info, ok := u.manager.GetDatabase(edition + ".mmdb"); ok {
 			result.LastUpdate, result.Size = info.LastUpdated, info.Size
 		}
-		return result
-	}
-
-	// Create database directory if it doesn't exist
-	if err := os.MkdirAll(u.config.MaxMind.DatabaseDir, 0o750); err != nil {
-		result.Error = fmt.Sprintf("failed to create database directory: %v", err)
 		return result
 	}
 

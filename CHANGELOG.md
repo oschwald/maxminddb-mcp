@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Coordinate database updates across server processes with cancellable per-edition file locks.
+
 - Check for database updates at startup when automatic updates are enabled, including missing configured editions.
 - Let queued updates and pages cancel promptly. Keep busy iterators from blocking unrelated queries.
 - Reject unknown TOML settings and report their names without printing values.
