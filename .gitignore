@@ -63,3 +63,6 @@ GeoIP.conf
 # Build/dist dirs
 /bin
 /dist
+
+# Markdown formatter dependencies
+/node_modules/

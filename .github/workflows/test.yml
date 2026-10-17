@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test
@@ -11,22 +14,14 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.2'
-      
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
       
       - name: Download dependencies
         run: go mod download
@@ -34,23 +29,30 @@ jobs:
       - name: Run tests
         run: go test -race -cover ./...
 
+      - name: Test fixture generator
+        run: go test ./...
+        working-directory: testdata
+
+      - name: Check vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   build:
     name: Build
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.2'
       
       - name: Build binary
-        run: go build -o bin/maxminddb-mcp cmd/maxminddb-mcp/main.go
+        run: go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
       
       - name: Test binary help
-        run: ./bin/maxminddb-mcp --help || true
+        run: ./bin/maxminddb-mcp --help

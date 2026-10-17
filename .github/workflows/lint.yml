@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   format-check:
     name: Format Check
@@ -11,26 +14,21 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: '20'
+          node-version: '24.22.0'
+          cache: npm
       
-      - name: Install prettier
-        run: npm install -g prettier
-      
+      - name: Install formatter
+        run: npm ci
+
       - name: Check markdown formatting
-        run: |
-          echo "Checking markdown formatting..."
-          if ! prettier --check "*.md"; then
-            echo "❌ Markdown files are not formatted with prettier. Run: npx prettier --write \"*.md\""
-            exit 1
-          fi
-          echo "✅ All markdown files are properly formatted!"
+        run: npm run format:check
 
   go-lint:
     name: Go Lint
@@ -38,22 +36,14 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.2'
-      
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
       
       - name: Download Go dependencies
         run: go mod download
@@ -62,7 +52,7 @@ jobs:
         run: go vet ./...
       
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
-          version: latest
+          version: v2.15.0
           args: --timeout=5m
