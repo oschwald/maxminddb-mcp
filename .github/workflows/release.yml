@@ -75,6 +75,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
+      - name: Package and publish universal MCPB
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          node scripts/package-universal-extension.mjs "$version" dist
+          gh release upload "$RELEASE_TAG" dist/maxminddb.mcpb dist/checksums.txt --clobber
+
   registry:
     name: Publish to MCP Registry
     needs: goreleaser

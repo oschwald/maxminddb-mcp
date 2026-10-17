@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add repository manifests for Claude, Cursor, Antigravity, and legacy Gemini CLI, plus Glama ownership metadata.
+- Package native Gemini CLI extensions with releases and include their SHA-256 checksums.
+- Publish one universal MCPB containing all five supported native builds, with automatic platform selection and the existing settings UI.
+
+### Changed
+
+- Use `maxminddb` as the server and plugin identifier, with `MaxMindDB` as the display name. The MCP Registry name becomes `io.github.oschwald/maxminddb`. The executable and config paths remain `maxminddb-mcp`. Users upgrading an extension or plugin must remove the old installation and configure the new one.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added

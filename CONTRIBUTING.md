@@ -79,7 +79,8 @@ docker build --platform linux/amd64 --build-arg TARGETPLATFORM=linux/amd64 -t ma
 GoReleaser uses `dockers_v2` and Docker Buildx to build the multi-platform image and retain the `-amd64` and `-arm64` tags. Snapshot builds load images locally without publishing and add a platform suffix to each tag. They do not update `latest` tags. To test release packaging and images:
 
 ```bash
-mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
+HOMEBREW_TAP_TOKEN='' mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
+node scripts/package-universal-extension.mjs "$(jq -r .version dist/metadata.json)" dist
 ```
 
 Building ARM64 images on an AMD64 host requires an ARM64 builder or QEMU emulation. To check binary packaging without images, add `--skip=docker`. See [GoReleaser's Docker documentation](https://goreleaser.com/customization/package/dockers_v2/).
@@ -88,11 +89,17 @@ Release CI runs only on version tags. Local build and config checks do not publi
 
 ### Automated publishing
 
-Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, and experimental Claude and OpenAI plugin ZIPs. It publishes the files and their SHA-256 checksums to GitHub Releases. Packaging uses the pinned `@anthropic-ai/mcpb` and `fflate` development dependencies. Node.js is not included in the extensions and is not needed to run the server.
+Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, Gemini extensions, and experimental Claude and OpenAI plugin ZIPs. It publishes the files and their SHA-256 checksums to GitHub Releases. Packaging uses the pinned `@anthropic-ai/mcpb` and `fflate` development dependencies. Node.js is not included in the extensions and is not needed to run the server.
 
-Each OS and architecture gets its own extension. The MCPB manifest declares the OS, but the format does not yet provide a portable CPU-architecture selector. File names and display names identify the architecture. See [the upstream architecture issue](https://github.com/modelcontextprotocol/mcpb/issues/10).
+Each OS and architecture gets its own extension. After GoReleaser finishes, CI assembles all five native builds into `maxminddb.mcpb`, adds its checksum, and uploads both files. The fixed asset name supports the README's latest-release link. A shell launcher selects the macOS or Linux executable. The manifest's Windows override launches the `.exe` directly. No additional runtime is required. The smaller platform-specific MCPBs remain available.
 
-After a stable release succeeds, CI updates the version in `server.json` and publishes to the MCP Registry as `io.github.oschwald/maxminddb-mcp`. Authentication uses GitHub Actions OIDC with `id-token: write`, so no registry token is stored. The registry entry uses the existing multi-architecture OCI image and a named Docker volume for downloaded databases. It requires Docker and MaxMind credentials. Native MCPB downloads remain available on GitHub. This avoids relying on registry clients to select an MCPB architecture.
+After a stable release succeeds, CI updates the version in `server.json` and publishes to the MCP Registry as `io.github.oschwald/maxminddb`. Authentication uses GitHub Actions OIDC with `id-token: write`, so no registry token is stored. The registry entry uses the existing multi-architecture OCI image and a named Docker volume for downloaded databases. It requires Docker and MaxMind credentials. Native MCPB downloads remain available on GitHub.
+
+Repository manifests for Claude, Cursor, and legacy Gemini CLI use a pinned container image. When updating that pin, use a published image and bump the manifest versions so clients detect the update. Gemini release ZIPs replace the Docker command with a bundled executable and use the release version. Their platform prefixes follow [Gemini's release asset rules](https://geminicli.com/docs/extensions/releasing/).
+
+Antigravity CLI is the primary Google integration. Its `.antigravity-plugin/plugin.json` manifest and root `mcp_config.json` launch the installed executable using existing config discovery. Validate the repository plugin with `agy plugin validate . --strict` on Antigravity CLI 1.4.0 or later. Gemini's credential settings do not survive Antigravity's legacy import, so do not advertise the Gemini ZIP as an Antigravity package.
+
+The Claude and Cursor manifests support directory submissions. `glama.json` identifies the GitHub maintainer for ownership verification. These files do not approve or claim a listing. Submit them through each directory's account workflow after merging. The shorter plugin identifiers replace `maxminddb-mcp`; users of older bundles must reinstall and configure the new plugin. The old MCP Registry entry remains separate from the new name.
 
 Prerelease tags publish GitHub assets but skip the registry and Homebrew. Validate registry metadata without publishing:
 

@@ -257,7 +257,7 @@ func assertModernResult(t *testing.T, result map[string]any) {
 	}
 	meta, _ := result["_meta"].(map[string]any)
 	info, _ := meta["io.modelcontextprotocol/serverInfo"].(map[string]any)
-	if info["name"] != "MaxMindDB Server" || info["version"] != "test" {
+	if info["name"] != "maxminddb" || info["title"] != "MaxMindDB" || info["version"] != "test" {
 		t.Fatalf("incorrect server identity: %v", result)
 	}
 }

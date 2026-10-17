@@ -1,6 +1,6 @@
 {
   "manifest_version": "0.3",
-  "name": "maxminddb-mcp",
+  "name": "maxminddb",
   "display_name": "MaxMindDB",
   "version": "0.0.0",
   "description": "Look up IP locations and network ownership in local MaxMind databases.",

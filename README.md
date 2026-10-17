@@ -20,17 +20,7 @@ Answers depend on the databases you provide. IP geolocation is an estimate, not 
 
 Install and configure the server through Claude Desktop. You do not need Go, a terminal, or a config file.
 
-1. Download a `.mcpb` file from [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases).
-   Choose the file for your computer:
-
-   | Computer                      | Filename suffix       |
-   | ----------------------------- | --------------------- |
-   | Mac with Apple silicon        | `_darwin_arm64.mcpb`  |
-   | Mac with an Intel processor   | `_darwin_amd64.mcpb`  |
-   | Windows with an x64 processor | `_windows_amd64.mcpb` |
-   | Linux x64                     | `_linux_amd64.mcpb`   |
-   | Linux ARM64                   | `_linux_arm64.mcpb`   |
-
+1. [Download the latest MCPB](https://github.com/oschwald/maxminddb-mcp/releases/latest/download/maxminddb.mcpb). This single file includes native executables for Mac Intel and Apple silicon, Linux x64 and ARM64, and Windows x64. It selects the executable when it starts. No separate runtime is required. Smaller packages for individual platforms remain available on [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases).
 2. In Claude Desktop, open **Settings → Extensions → Advanced settings → Install Extension** and select the file.
 3. Configure one of these choices in the extension settings:
    - **Download databases:** Leave **Download and update MaxMind databases** enabled. Enter your MaxMind account ID and license key. The default editions are `GeoLite2-City` and `GeoLite2-ASN`. Change these for other editions available to your account. Leave **Database folder** blank to use the application cache, or select a writable folder.
@@ -41,7 +31,7 @@ The initial download runs in the background. Claude can check its status with `l
 
 Claude stores the license key as a sensitive setting. Downloaded files stay outside the extension, so replacing the extension does not remove them. The default download directory is `maxminddb-mcp/databases` inside the OS user cache directory. No databases or MaxMind credentials are bundled. Obtain credentials from your [MaxMind account](https://www.maxmind.com/en/accounts/current/license-key).
 
-Install the matching `.mcpb` from a newer release to upgrade. GitHub downloads do not enable automatic extension updates. Directory-listed extensions have a separate update mechanism. See [Claude's desktop extension documentation](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
+Download and install the latest MCPB again to upgrade. The link always follows the latest release. If upgrading from v0.2.0 or earlier, remove the old `maxminddb-mcp` extension and configure the new `maxminddb` extension. The identifier changed, so saved extension settings do not carry over. Database files remain in the same folder. GitHub downloads do not enable automatic extension updates. Directory-listed extensions have a separate update mechanism. See [Claude's desktop extension documentation](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
 
 ### Standalone executable
 
@@ -251,13 +241,52 @@ claude mcp add --scope user \
 
 See the [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 
+For a repository plugin backed by Docker, install from this marketplace in Claude Code:
+
+```text
+/plugin install maxminddb --marketplace oschwald/maxminddb-mcp
+```
+
+This requires a running Docker engine. Enter your account ID, license key, and edition IDs in the plugin settings. The repository plugin downloads databases into the `maxminddb-mcp-data` Docker volume. Use the native MCPB or release plugin to select an existing MMDB folder.
+
 ### Claude Cowork plugin (experimental)
 
 Releases also include a `_claude-plugin.zip` for each extension platform. It contains the same executable and settings as the MCPB. In Cowork, open **Customize → Plugins** and upload the matching ZIP as a custom plugin. Configure its settings before using the tools.
 
-The plugin includes a `setup` skill to check database status and perform a sample IP lookup. Ask it to check your MaxMindDB setup. In Claude Code, invoke `/maxminddb-mcp:setup`. The skill directs credential entry to client settings. It does not collect keys in chat. The MCPB extension does not register plugin skills by itself.
+The plugin includes a `setup` skill to check database status and perform a sample IP lookup. Ask it to check your MaxMindDB setup. In Claude Code, invoke `/maxminddb:setup`. The skill directs credential entry to client settings. It does not collect keys in chat. The MCPB extension does not register plugin skills by itself.
 
 This package follows Claude's plugin format, but Cowork installation and its settings UI still need manual validation. Use the MCPB for Claude Desktop chat. A local MCP plugin does not provide tools to Claude web or mobile. See [Claude's plugin documentation](https://support.claude.com/en/articles/13837440-use-plugins-in-claude).
+
+### Antigravity CLI (`agy`)
+
+After installing `maxminddb-mcp` on PATH and configuring it in a [default location](#config-discovery-and-defaults), install the repository plugin:
+
+```bash
+agy plugin install https://github.com/oschwald/maxminddb-mcp
+agy plugin list
+```
+
+The plugin includes the MCP connection and setup skill. It uses the installed executable and its existing configuration. In Antigravity, ask it to check your MaxMindDB setup and look up `8.8.8.8`. For a direct MCP connection without the skill, run `agy mcp add maxminddb maxminddb-mcp` instead.
+
+Google replaced Gemini CLI for individual accounts with Antigravity CLI on June 18, 2026. Enterprise and API-key users can still use Gemini CLI. See [Google's transition announcement](https://github.com/google-gemini/gemini-cli/discussions/28017) and [Antigravity's plugin documentation](https://antigravity.google/docs/plugins).
+
+### Gemini CLI (legacy)
+
+For users who retain Gemini CLI access, install the extension and enter your MaxMind account ID and license key when prompted:
+
+```bash
+gemini extensions install https://github.com/oschwald/maxminddb-mcp
+```
+
+Gemini selects the native release ZIP for your platform. It stores the license key as a sensitive setting and downloads `GeoLite2-City` and `GeoLite2-ASN` into the OS user cache. Ask it to check your MaxMindDB setup before the first lookup. To change credentials, run `gemini extensions config maxminddb`.
+
+Installing from a Git branch with `--ref main` uses the repository manifest and requires Docker. This mode stores databases in the `maxminddb-mcp-data` volume. Native release ZIPs do not require Docker.
+
+### Cursor plugin
+
+The repository includes a Cursor plugin manifest at `.cursor-plugin/plugin.json`. It declares the MaxMind account ID, license key, and edition settings. Configure these through Cursor's plugin settings. This plugin requires Docker and stores databases in the `maxminddb-mcp-data` volume.
+
+See [Cursor's submission instructions](https://cursor.com/docs/reference/plugins#submitting-a-plugin). Installation and settings still need validation in Cursor. This is not an approved public listing.
 
 ### Zed
 

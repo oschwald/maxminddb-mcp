@@ -1,0 +1,16 @@
+{
+  "name": "maxminddb",
+  "owner": {
+    "name": "Greg Oschwald"
+  },
+  "metadata": {
+    "description": "MaxMindDB tools for IP locations and network ownership."
+  },
+  "plugins": [
+    {
+      "name": "maxminddb",
+      "source": "./",
+      "description": "Look up IP locations and network ownership in local MaxMind databases."
+    }
+  ]
+}

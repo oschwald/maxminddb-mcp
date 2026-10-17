@@ -1,0 +1,48 @@
+{
+  "name": "maxminddb",
+  "version": "0.2.0",
+  "description": "Look up IP locations and network ownership in local MaxMind databases.",
+  "mcpServers": {
+    "maxminddb": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--mount",
+        "type=volume,source=maxminddb-mcp-data,target=/data",
+        "--env",
+        "MAXMINDDB_MCP_CONFIG=",
+        "--env",
+        "MAXMINDDB_MCP_DOWNLOAD_ENABLED=true",
+        "--env",
+        "MAXMINDDB_MCP_DATABASE_DIR=/data",
+        "--env",
+        "MAXMINDDB_MCP_ACCOUNT_ID",
+        "--env",
+        "MAXMINDDB_MCP_LICENSE_KEY",
+        "--env",
+        "MAXMINDDB_MCP_EDITIONS",
+        "ghcr.io/oschwald/maxminddb-mcp:0.2.0"
+      ],
+      "env": {
+        "MAXMINDDB_MCP_ACCOUNT_ID": "${MAXMINDDB_MCP_ACCOUNT_ID}",
+        "MAXMINDDB_MCP_LICENSE_KEY": "${MAXMINDDB_MCP_LICENSE_KEY}",
+        "MAXMINDDB_MCP_EDITIONS": "GeoLite2-City,GeoLite2-ASN"
+      }
+    }
+  },
+  "settings": [
+    {
+      "name": "MaxMind account ID",
+      "description": "Your numeric MaxMind account ID.",
+      "envVar": "MAXMINDDB_MCP_ACCOUNT_ID"
+    },
+    {
+      "name": "MaxMind license key",
+      "description": "Your MaxMind license key with database download access.",
+      "envVar": "MAXMINDDB_MCP_LICENSE_KEY",
+      "sensitive": true
+    }
+  ]
+}
