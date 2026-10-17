@@ -81,54 +81,37 @@ changelog:
     - title: Others
       order: 999
 
-dockers:
-  - id: amd64
+dockers_v2:
+  - &container
+    id: multiarch
     ids: [maxminddb-mcp]
-    image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-amd64"
+    images: [ghcr.io/oschwald/maxminddb-mcp]
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
     dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
-      - "--platform=linux/amd64"
-    goos: linux
-    goarch: amd64
+    platforms: [linux/amd64, linux/arm64]
+    flags: ["--pull=true"]
+    labels:
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/oschwald/maxminddb-mcp
 
-  - id: arm64
-    ids: [maxminddb-mcp]
-    image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-arm64"
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-arm64"
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/oschwald/maxminddb-mcp"
-      - "--platform=linux/arm64"
-    goos: linux
-    goarch: arm64
+  - <<: *container
+    id: amd64
+    platforms: [linux/amd64]
+    tags:
+      - "{{ .Version }}-amd64"
+      - "{{ if not .IsSnapshot }}latest-amd64{{ end }}"
 
-docker_manifests:
-  - name_template: "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}-arm64"
-      
-  - name_template: "ghcr.io/oschwald/maxminddb-mcp:latest"
-    image_templates:
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-amd64"
-      - "ghcr.io/oschwald/maxminddb-mcp:latest-arm64"
-
+  - <<: *container
+    id: arm64
+    platforms: [linux/arm64]
+    tags:
+      - "{{ .Version }}-arm64"
+      - "{{ if not .IsSnapshot }}latest-arm64{{ end }}"
 
 nfpms:
   - id: packages
@@ -170,8 +153,11 @@ release:
     # Pull the latest image
     docker pull ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
     
-    # Run the container
-    docker run -v ~/.config/maxminddb-mcp:/config ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
+    # Set database_dir = "/data" in the config and make it readable by UID 1001.
+    docker run --rm -i \
+      -v "$HOME/.config/maxminddb-mcp/config.toml:/config/config.toml:ro" \
+      -v maxminddb-data:/data \
+      ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
     ```
     
   footer: |

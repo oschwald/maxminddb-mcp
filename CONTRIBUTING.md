@@ -56,16 +56,23 @@ go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
 mise exec goreleaser@2.18.3 -- goreleaser build --snapshot --clean
 ```
 
-The Dockerfile consumes a prebuilt Linux binary named `maxminddb-mcp` at the root of its build context. Build in a temporary directory to avoid sending config files or credentials to Docker:
+The Dockerfile consumes a prebuilt Linux binary named `maxminddb-mcp` under `linux/amd64/` or `linux/arm64/` in its build context. Build in a temporary directory to avoid sending config files or credentials to Docker:
 
 ```bash
 build_dir=$(mktemp -d)
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$build_dir/maxminddb-mcp" ./cmd/maxminddb-mcp
+mkdir -p "$build_dir/linux/amd64"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$build_dir/linux/amd64/maxminddb-mcp" ./cmd/maxminddb-mcp
 cp Dockerfile "$build_dir/Dockerfile"
-docker build --platform linux/amd64 -t maxminddb-mcp:dev "$build_dir"
+docker build --platform linux/amd64 --build-arg TARGETPLATFORM=linux/amd64 -t maxminddb-mcp:dev "$build_dir"
 ```
 
-GoReleaser 2.18.3 still supports this project's `dockers` and `docker_manifests` configuration. Those fields are deprecated. Migrate both before upgrading to GoReleaser 3, preserving the existing architecture-specific tags. See [GoReleaser's migration notes](https://goreleaser.com/deprecations/#dockers).
+GoReleaser uses `dockers_v2` and Docker Buildx to build the multi-platform image and retain the `-amd64` and `-arm64` tags. Snapshot builds load images locally without publishing and add a platform suffix to each tag. They do not update `latest` tags. To test release packaging and images:
+
+```bash
+mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
+```
+
+Building ARM64 images on an AMD64 host requires an ARM64 builder or QEMU emulation. To check binary packaging without images, add `--skip=docker`. See [GoReleaser's Docker documentation](https://goreleaser.com/customization/package/dockers_v2/).
 
 Release CI runs only on version tags. Local build and config checks do not publish a release.
 

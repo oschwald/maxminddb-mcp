@@ -12,7 +12,8 @@ RUN mkdir -p /config /data && \
     chown -R maxmind:maxmind /config /data
 
 # Copy the binary
-COPY maxminddb-mcp /usr/local/bin/maxminddb-mcp
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/maxminddb-mcp /usr/local/bin/maxminddb-mcp
 
 # Make sure the binary is executable
 RUN chmod +x /usr/local/bin/maxminddb-mcp
