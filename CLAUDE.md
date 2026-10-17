@@ -22,6 +22,7 @@ npm run format:check
 - Validate tool arguments and resume tokens. Errors must set MCP `isError`.
 - Hold the per-edition file lock from the installed-file check through installation and reload. Keep lock files on disk.
 - Keep shared MMDB readers open while active iterators can reference them.
+- Apply the iterator limit to both new queries and token resumes. Release new iterators if their first page fails.
 - Hold the iterator lock for a complete page. Cancellation must not lose a partial page.
 - Use bundled fixtures and local HTTP servers in tests. Do not depend on home-directory databases or live MaxMind downloads.
 - `testdata` is an upstream submodule. Its generator uses a pinned `mmdbwriter/v2` prerelease. Commit only submodule pointers that collaborators can fetch.

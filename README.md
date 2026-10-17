@@ -224,7 +224,7 @@ An unknown or expired ID without a token returns `iterator_expired`. Token resum
 
 Live iterators retain a cursor. Token resumes scan to the saved position once. Requests on the same iterator run serially. Cancellation rolls back an incomplete page so it can be retried without losing records.
 
-A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. There is no hard limit on the number of live iterators.
+A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. Each server retains at most 128 iterators, including completed queries until they expire. Expired entries are reclaimed before creating an iterator. At the limit, new queries and token resumes return `iterator_limit`. Continue with an existing `iterator_id` or wait for idle entries to expire. A failed or canceled first page releases its iterator immediately.
 
 ### Filters
 
@@ -251,7 +251,7 @@ Available in `maxmind` and `geoip_compat` modes. Accepts no arguments. Returns a
 
 ### Errors
 
-Application errors include an `error` object with `code` and `message`. Common codes are `invalid_ip`, `invalid_network`, `invalid_filter`, `db_not_found`, `no_databases`, `database_required`, `iterator_expired`, `query_mismatch`, and `resume_failed`. Input-schema errors use the SDK's error text.
+Application errors include an `error` object with `code` and `message`. Common codes are `invalid_ip`, `invalid_network`, `invalid_filter`, `db_not_found`, `no_databases`, `database_required`, `iterator_expired`, `iterator_limit`, `query_mismatch`, and `resume_failed`. Input-schema errors use the SDK's error text.
 
 ## Protocol and development
 

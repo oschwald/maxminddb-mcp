@@ -295,16 +295,18 @@ func (s *Server) handleLookupNetwork(
 		if !exists {
 			return toolError("db_not_found", "Database not found: "+dbName), nil
 		}
+		errorCode := "iterator_creation_failed"
 		if resumeToken != "" {
+			errorCode = "resume_failed"
 			iter, err = s.iterMgr.ResumeIterator(reader, dbName, resumeToken)
-			if err != nil {
-				return toolError("resume_failed", err.Error()), nil
-			}
 		} else {
 			iter, err = s.iterMgr.CreateIterator(reader, dbName, network, filters, filterMode)
-			if err != nil {
-				return toolError("iterator_creation_failed", err.Error()), nil
+		}
+		if err != nil {
+			if errors.Is(err, iterator.ErrIteratorLimit) {
+				errorCode = "iterator_limit"
 			}
+			return toolError(errorCode, err.Error()), nil
 		}
 		created = true
 	}
@@ -325,6 +327,9 @@ func (s *Server) handleLookupNetwork(
 	// Perform iteration
 	result, err := s.iterMgr.Iterate(ctx, iter, int(maxResults))
 	if err != nil {
+		if created {
+			s.iterMgr.RemoveIterator(iter.ID)
+		}
 		return toolError("iteration_failed", fmt.Sprintf("Iteration failed: %v", err)), nil
 	}
 

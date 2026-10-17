@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Limit retained iterators to 128 per server. Existing iterators can continue when new queries and token resumes reach the limit.
+
 - Require Go 1.26 and build with Go 1.27.2. Update mcp-go to 1.3.0, maxminddb-golang/v2 to 2.8.0, geoipupdate to v8, fsnotify, go-toml, and indirect dependencies.
 - Update the fixture submodule to an upstream revision using a pinned `mmdbwriter/v2` prerelease. This dependency is used only by the fixture generator.
 - Validate MCP input and output schemas. Add tool annotations and use the build's version in server metadata.
@@ -23,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace obsolete client examples with verified stdio configuration and current tool contracts.
 
 ### Fixed
+
+- Release newly created iterators when their first page fails or is canceled. Reclaim expired iterators before admitting new queries.
 
 - Return `no_databases` from IP lookups when no database is available, consistent with network lookups.
 

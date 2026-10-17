@@ -23,6 +23,14 @@ import (
 // MaxResults limits the number of records returned in one page.
 const MaxResults = 1000
 
+// MaxIterators limits the retained queries in one manager.
+const MaxIterators = 128
+
+// ErrIteratorLimit means all retained query slots are in use.
+var ErrIteratorLimit = errors.New(
+	"iterator limit reached. Reuse an existing iterator or wait for idle iterators to expire",
+)
+
 // ManagedIterator represents a stateful iterator with metadata.
 type ManagedIterator struct {
 	LastAccess   time.Time
@@ -139,10 +147,7 @@ func (m *Manager) CreateIterator(
 	if err != nil {
 		return nil, err
 	}
-	m.mu.Lock()
-	m.iterators[iterator.ID] = iterator
-	m.mu.Unlock()
-	return iterator, nil
+	return m.registerIterator(iterator)
 }
 
 // ResumeIterator creates a new iterator from a resume token.
@@ -181,9 +186,17 @@ func (m *Manager) ResumeIterator(
 	}
 	iterator.Processed, iterator.Matched = resume.Processed, resume.Matched
 	iterator.LastNetwork, iterator.exhausted = last, resume.Exhausted
+	return m.registerIterator(iterator)
+}
+
+func (m *Manager) registerIterator(iterator *ManagedIterator) (*ManagedIterator, error) {
+	m.cleanupExpired()
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.iterators) >= MaxIterators {
+		return nil, ErrIteratorLimit
+	}
 	m.iterators[iterator.ID] = iterator
-	m.mu.Unlock()
 	return iterator, nil
 }
 

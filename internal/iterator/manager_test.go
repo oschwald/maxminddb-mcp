@@ -109,6 +109,59 @@ func TestPageBounds(t *testing.T) {
 	}
 }
 
+func TestIteratorLimit(t *testing.T) {
+	manager, iterator, _ := testIterator(t)
+	page, err := manager.Iterate(t.Context(), iterator, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create := func(resume bool) (*ManagedIterator, error) {
+		if resume {
+			return manager.ResumeIterator(iterator.Reader, iterator.Database, page.ResumeToken)
+		}
+		return manager.CreateIterator(
+			iterator.Reader,
+			iterator.Database,
+			iterator.Network,
+			nil,
+			"and",
+		)
+	}
+	var wg sync.WaitGroup
+	for i := range 2 * MaxIterators {
+		wg.Go(func() {
+			if _, err := create(i%2 == 0); err != nil && !errors.Is(err, ErrIteratorLimit) {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	if len(manager.iterators) != MaxIterators {
+		t.Fatalf("got %d iterators, want %d", len(manager.iterators), MaxIterators)
+	}
+	for _, resume := range []bool{false, true} {
+		if _, err := create(resume); !errors.Is(err, ErrIteratorLimit) {
+			t.Fatalf("resume=%t: expected iterator limit, got %v", resume, err)
+		}
+	}
+	if _, err := manager.Iterate(t.Context(), iterator, 1); err != nil {
+		t.Fatalf("limit blocked an existing iterator: %v", err)
+	}
+	iterator.LastAccess = time.Now().Add(-2 * time.Minute)
+	iterator.busy <- struct{}{}
+	_, err = create(false)
+	<-iterator.busy
+	if !errors.Is(err, ErrIteratorLimit) {
+		t.Fatalf("busy iterator was evicted: %v", err)
+	}
+	if _, err := create(true); err != nil {
+		t.Fatalf("expired iterator did not free a slot: %v", err)
+	}
+	if !iterator.closed || iterator.next != nil || len(manager.iterators) != MaxIterators {
+		t.Fatal("expired iterator was not released before admission")
+	}
+}
+
 func TestCanceledPageCanBeRetried(t *testing.T) {
 	manager, iterator, expected := testIterator(t)
 	ctx, cancel := context.WithCancel(t.Context())

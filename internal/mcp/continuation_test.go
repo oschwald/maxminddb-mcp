@@ -1,6 +1,9 @@
 package mcp
 
 import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -95,6 +98,10 @@ func TestNetworkContinuation(t *testing.T) {
 			delete(args, key)
 		}
 	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	result, err = server.handleLookupNetwork(ctx, networkRequest(args))
+	assertToolError(t, result, err, "iteration_failed")
 	result, err = server.handleLookupNetwork(t.Context(), networkRequest(args))
 	if err != nil || result.IsError {
 		t.Fatalf("second page: %+v %v", result, err)
@@ -114,6 +121,79 @@ func TestNetworkContinuation(t *testing.T) {
 	resumed := result.StructuredContent.(*iterator.IterationResult)
 	if resumed.Results[0].Network != second.Results[0].Network {
 		t.Fatal("token resumed at wrong position")
+	}
+}
+
+func TestFailedFirstPagesReleaseIterators(t *testing.T) {
+	for _, failure := range []string{"canceled query", "canceled resume", "absent resume position"} {
+		t.Run(failure, func(t *testing.T) {
+			server := testServer(t)
+			args := map[string]any{"network": "1.0.0.0/8", "max_results": 1}
+			if failure != "canceled query" {
+				result, err := server.handleLookupNetwork(t.Context(), networkRequest(args))
+				if err != nil || result.IsError {
+					t.Fatalf("first page: %+v, %v", result, err)
+				}
+				page := result.StructuredContent.(*iterator.IterationResult)
+				server.iterMgr.RemoveIterator(page.IteratorID)
+				token := page.ResumeToken
+				if failure == "absent resume position" {
+					data, err := base64.StdEncoding.DecodeString(token)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var resume iterator.ResumeToken
+					if err := json.Unmarshal(data, &resume); err != nil {
+						t.Fatal(err)
+					}
+					resume.LastNetwork = "1.255.255.0/24"
+					data, err = json.Marshal(resume)
+					if err != nil {
+						t.Fatal(err)
+					}
+					token = base64.StdEncoding.EncodeToString(data)
+				}
+				args["resume_token"] = token
+			}
+			ctx := t.Context()
+			if failure != "absent resume position" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			for range iterator.MaxIterators + 1 {
+				result, err := server.handleLookupNetwork(ctx, networkRequest(args))
+				assertToolError(t, result, err, "iteration_failed")
+			}
+			delete(args, "resume_token")
+			result, err := server.handleLookupNetwork(t.Context(), networkRequest(args))
+			if err != nil || result.IsError {
+				t.Fatalf("failed first pages exhausted iterator slots: %+v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestNetworkIteratorLimit(t *testing.T) {
+	server := testServer(t)
+	args := map[string]any{"network": "1.0.0.0/8", "max_results": 1}
+	var last *iterator.IterationResult
+	for range iterator.MaxIterators {
+		result, err := server.handleLookupNetwork(t.Context(), networkRequest(args))
+		if err != nil || result.IsError {
+			t.Fatalf("page below iterator limit: %+v, %v", result, err)
+		}
+		last = result.StructuredContent.(*iterator.IterationResult)
+	}
+	result, err := server.handleLookupNetwork(t.Context(), networkRequest(args))
+	assertToolError(t, result, err, "iterator_limit")
+	args["resume_token"] = last.ResumeToken
+	result, err = server.handleLookupNetwork(t.Context(), networkRequest(args))
+	assertToolError(t, result, err, "iterator_limit")
+	args["iterator_id"] = last.IteratorID
+	result, err = server.handleLookupNetwork(t.Context(), networkRequest(args))
+	if err != nil || result.IsError {
+		t.Fatalf("limit blocked continuation: %+v, %v", result, err)
 	}
 }
 
