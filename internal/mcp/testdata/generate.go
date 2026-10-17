@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/maxmind/mmdbwriter/v2"
 	"github.com/maxmind/mmdbwriter/v2/mmdbtype"
@@ -19,7 +20,7 @@ func main() {
 	if len(os.Args) != 2 {
 		log.Fatal("usage: generate output-directory")
 	}
-	for _, version := range []string{"old", "new", "dense"} {
+	for _, version := range []string{"old", "new", "dense", "groups"} {
 		if err := generate(os.Args[1], version); err != nil {
 			log.Fatal(err)
 		}
@@ -42,7 +43,14 @@ func generate(directory, version string) error {
 		"2001:db8::/120": mmdbtype.Map{"country": mmdbtype.String("US"), "asn": mmdbtype.Uint32(1)},
 		"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128": mmdbtype.Bool(true),
 	}
-	if version == "dense" {
+	if version == "groups" {
+		records = map[string]mmdbtype.DataType{"2001:db8:eeee::/128": mmdbtype.String(strings.Repeat("x", 1024))}
+		address := netip.MustParseAddr("2001:db8:ffff::")
+		for i := range 101 {
+			records[netip.PrefixFrom(address, 128).String()] = mmdbtype.Uint32(i)
+			address = address.Next()
+		}
+	} else if version == "dense" {
 		records = map[string]mmdbtype.DataType{}
 		address := netip.MustParseAddr("2001:db8:ffff::")
 		for i := range 10001 {

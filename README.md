@@ -288,6 +288,25 @@ Page size can change. Reloading either database or restarting the server
 invalidates the token. Cancellation returns an error without advancing a token.
 Clients can request progress with `_meta.progressToken`.
 
+### `summarize_network`
+
+Requires `database`, `network`, and `group_by`. Supports `filters` and
+`filter_mode`. Use an IPv4 /8 or smaller network, or a native IPv6 /32 or smaller
+network. `group_by` uses the same paths as field selection and must select a
+scalar value. Missing fields form a group with `missing: true`.
+
+Each group has `value`, `missing`, `records`, and `addresses`. Record counts
+count stored network records. Address counts include only addresses inside the
+query, with IPv4 aliases skipped. Counts can differ when equal answers are stored
+in networks of different sizes. Address counts are decimal strings to preserve
+IPv6 precision. `total_addresses` is the size of the query. `matched_addresses`
+is the coverage of matching records. Uncovered addresses do not form a group.
+
+Summaries scan at most 10,000 records and return at most 100 groups. Group values
+are limited to 1024 JSON bytes. Exceeding a limit returns an error, not partial
+totals. Use a smaller network or select another field. Filters can reduce groups
+but do not reduce the records scanned. Scans support cancellation and progress.
+
 ### `inspect_database`
 
 Requires `database`. Optional `sample_size` ranges from 1 to 1000 and defaults

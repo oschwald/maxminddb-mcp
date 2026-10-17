@@ -31,8 +31,7 @@ func parseFields(request mcp.CallToolRequest) ([]string, error) {
 		return nil, fmt.Errorf("fields must contain at most 64 paths")
 	}
 	for _, field := range fields {
-		if field == "" || len(field) > 256 || strings.HasPrefix(field, ".") ||
-			strings.HasSuffix(field, ".") || strings.Contains(field, "..") {
+		if !validFieldPath(field) {
 			return nil, fmt.Errorf("invalid field path: %q", field)
 		}
 	}
@@ -50,4 +49,10 @@ func selectFields(value any, fields []string) any {
 		}
 	}
 	return selected
+}
+
+func validFieldPath(field string) bool {
+	return field != "" && len(field) <= 256 && !strings.HasPrefix(field, ".") &&
+		!strings.HasSuffix(field, ".") &&
+		!strings.Contains(field, "..")
 }

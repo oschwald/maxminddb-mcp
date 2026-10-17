@@ -108,6 +108,7 @@ func (s *Server) registerTools() {
 	s.registerBatchTool()
 	s.registerInspectionTool()
 	s.registerComparisonTool()
+	s.registerSummaryTool()
 
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(
@@ -132,40 +133,8 @@ func (s *Server) registerTools() {
 				"Database name from list_databases; required when more than one is loaded",
 			),
 		),
-		mcp.WithArray(
-			"filters",
-			mcp.Description(
-				"Filters for a new query; omit to keep filters when continuing a query",
-			),
-			mcp.Items(map[string]any{
-				"type": "object", "additionalProperties": false,
-				"required": []string{"field", "operator", "value"},
-				"properties": map[string]any{
-					"field": map[string]any{"type": "string", "minLength": 1},
-					"operator": map[string]any{
-						"type": "string",
-						"enum": append(
-							filter.SupportedOperators(),
-							"eq",
-							"ne",
-							"gt",
-							"lt",
-							"gte",
-							"lte",
-						),
-					},
-					"value": map[string]any{},
-				},
-			}),
-		),
-		mcp.WithString(
-			"filter_mode",
-			mcp.Enum(
-				"and",
-				"or",
-			),
-			mcp.Description("How to combine filters: 'and' or 'or' (default: 'and')"),
-		),
+		filtersOption(),
+		filterModeOption(),
 		mcp.WithInteger(
 			"max_results",
 			mcp.Min(1),
