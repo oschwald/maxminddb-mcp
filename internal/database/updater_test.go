@@ -8,6 +8,7 @@ import (
 	"crypto/md5" //nolint:gosec // The update API uses MD5 for file integrity.
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -193,5 +194,57 @@ func TestDownloadCancellation(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("download ignored cancellation")
+	}
+}
+
+func TestStartupUpdateCheck(t *testing.T) {
+	for _, installed := range []bool{false, true} {
+		for _, autoUpdate := range []bool{false, true} {
+			t.Run(
+				fmt.Sprintf("installed=%t/auto_update=%t", installed, autoUpdate),
+				func(t *testing.T) {
+					requested := make(chan struct{}, 1)
+					updater := testUpdater(
+						t,
+						http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+							requested <- struct{}{}
+							http.Error(w, "test endpoint", http.StatusUnauthorized)
+						}),
+					)
+					if installed {
+						// An installed database must not suppress checks for a missing configured edition.
+						if err := updater.manager.LoadDatabase(
+							"../../testdata/test-data/GeoIP2-City-Test.mmdb",
+						); err != nil {
+							t.Fatal(err)
+						}
+					}
+					updater.config.AutoUpdate = autoUpdate
+					updater.config.UpdateIntervalDuration = time.Hour
+					ctx, cancel := context.WithCancel(t.Context())
+					defer cancel()
+					done := make(chan struct{})
+					go func() { updater.RunUpdates(ctx); close(done) }()
+					if autoUpdate {
+						select {
+						case <-requested:
+						case <-time.After(5 * time.Second):
+							t.Fatal("startup update check did not run")
+						}
+						cancel()
+					}
+					select {
+					case <-done:
+					case <-time.After(5 * time.Second):
+						t.Fatal("update loop did not stop")
+					}
+					if !autoUpdate && (len(requested) > 0) != !installed {
+						t.Fatal(
+							"automatic updates disabled: only an empty installation should download",
+						)
+					}
+				},
+			)
+		}
 	}
 }

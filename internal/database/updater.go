@@ -86,9 +86,9 @@ func (u *Updater) UpdateDatabase(ctx context.Context, edition string) (UpdateRes
 	return result, nil
 }
 
-// RunUpdates performs an initial download if needed, then updates on schedule until canceled.
+// RunUpdates checks for updates at startup and on schedule until canceled.
 func (u *Updater) RunUpdates(ctx context.Context) {
-	if len(u.manager.ListDatabases()) == 0 {
+	if u.config.AutoUpdate || len(u.manager.ListDatabases()) == 0 {
 		u.updateAndLog(ctx)
 	}
 	if !u.config.AutoUpdate {
