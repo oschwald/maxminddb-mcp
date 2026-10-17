@@ -37,22 +37,27 @@ func (s *Server) handleVerifyDatabase(
 	if !ok {
 		return toolError("db_not_found", "Database not found: "+name), nil
 	}
+	return s.verifyDatabase(ctx, name, reader.Verify, s.progressReporter(ctx, request)), nil
+}
+
+func (s *Server) verifyDatabase(
+	ctx context.Context,
+	name string,
+	verify func() error,
+	report func(string),
+) *mcp.CallToolResult {
 	select {
 	case <-ctx.Done():
-		return toolError("canceled", "Verification did not start: "+ctx.Err().Error()), nil
+		return toolError("canceled", "Verification did not start: "+ctx.Err().Error())
 	case s.verificationGate <- struct{}{}:
 	}
 	defer func() { <-s.verificationGate }()
 	if err := ctx.Err(); err != nil {
-		return toolError("canceled", "Verification did not start: "+err.Error()), nil
+		return toolError("canceled", "Verification did not start: "+err.Error())
 	}
-	if report := s.progressReporter(ctx, request); report != nil {
+	if report != nil {
 		report("Verifying " + name + ". Verification cannot stop once started")
 	}
-	return verifyDatabase(ctx, name, reader.Verify), nil
-}
-
-func verifyDatabase(ctx context.Context, name string, verify func() error) *mcp.CallToolResult {
 	// Verify has no context support. Keep the request and gate until it finishes.
 	err := verify()
 	if err != nil {
