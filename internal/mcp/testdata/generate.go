@@ -5,11 +5,11 @@ package main
 import (
 	"fmt"
 	"log"
- "maps"
- "slices"
+	"maps"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/maxmind/mmdbwriter/v2"
 	"github.com/maxmind/mmdbwriter/v2/mmdbtype"
@@ -36,9 +36,9 @@ func generate(directory, version string) error {
 		return err
 	}
 	records := map[string]mmdbtype.DataType{
-		"10.0.0.0/24": mmdbtype.Map{"country": mmdbtype.String("US"), "asn": mmdbtype.Uint32(1)},
-		"10.0.1.0/24": mmdbtype.String(version),
-		"10.0.2.0/24": mmdbtype.Slice{mmdbtype.Uint32(7), mmdbtype.Map{"name": mmdbtype.String("array")}},
+		"10.0.0.0/24":    mmdbtype.Map{"country": mmdbtype.String("US"), "asn": mmdbtype.Uint32(1)},
+		"10.0.1.0/24":    mmdbtype.String(version),
+		"10.0.2.0/24":    mmdbtype.Slice{mmdbtype.Uint32(7), mmdbtype.Map{"name": mmdbtype.String("array")}},
 		"2001:db8::/120": mmdbtype.Map{"country": mmdbtype.String("US"), "asn": mmdbtype.Uint32(1)},
 		"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128": mmdbtype.Bool(true),
 	}
@@ -52,7 +52,7 @@ func generate(directory, version string) error {
 		records["10.0.4.0/24"] = mmdbtype.Map{"country": mmdbtype.String("GB")}
 	}
 	for _, prefix := range slices.Sorted(maps.Keys(records)) {
- value := records[prefix]
+		value := records[prefix]
 		if err := tree.Insert(netip.MustParsePrefix(prefix), value); err != nil {
 			return err
 		}

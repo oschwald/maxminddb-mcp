@@ -37,6 +37,15 @@ cd testdata
 go test ./...
 ```
 
+The query tool fixtures in `internal/mcp/testdata` cover custom record types and
+changes between database builds. Regenerate them with the pinned writer from
+the submodule, then commit the generator and both MMDB files:
+
+```bash
+cd testdata
+go run ../internal/mcp/testdata/generate.go ../internal/mcp/testdata
+```
+
 Tests use bundled MMDB fixtures and local HTTP servers. They do not require a MaxMind account or databases in your home directory. Add regression tests for pagination, filters, config loading, and download failures when changing those paths. Prefer assertions about returned data over tests that only check for a non-nil result. Aim for at least 80% coverage in changed packages, while prioritizing meaningful cases.
 
 CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. Fixture generator tests and vulnerability checks run on Linux.
