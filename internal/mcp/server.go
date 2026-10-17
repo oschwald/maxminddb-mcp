@@ -104,6 +104,7 @@ func (s *Server) registerTools() {
 		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
 	)
 	s.mcp.AddTool(lookupIPTool, s.handleLookupIP)
+	s.registerBatchTool()
 
 	// lookup_network tool
 	lookupNetworkTool := mcp.NewTool(
@@ -210,7 +211,7 @@ func (s *Server) registerTools() {
 
 // handleLookupIP handles the lookup_ip tool.
 func (s *Server) handleLookupIP(
-	_ context.Context,
+	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	ipStr, err := request.RequireString("ip")
@@ -218,16 +219,19 @@ func (s *Server) handleLookupIP(
 		//nolint:nilerr // MCP protocol expects error result, not Go error
 		return toolError("missing_parameter", "Missing required parameter: ip"), nil
 	}
+	if err := ctx.Err(); err != nil {
+		return toolError("canceled", err.Error()), nil
+	}
+	return s.lookupIP(ipStr, request.GetString("database", ""))
+}
 
+func (s *Server) lookupIP(ipStr, dbName string) (*mcp.CallToolResult, error) {
 	// Parse IP address
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
 		//nolint:nilerr // MCP protocol expects error result, not Go error
 		return toolError("invalid_ip", "Invalid IP address: "+ipStr), nil
 	}
-
-	// Get database name if specified
-	dbName := request.GetString("database", "")
 
 	// Perform lookup
 	if dbName != "" {

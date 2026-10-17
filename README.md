@@ -184,6 +184,15 @@ Arguments: required `ip` (IPv4 or IPv6), optional `database` from `list_database
 
 A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`. If no database is available, an all-database lookup returns `no_databases`, as network lookup does. Check server logs for loading or download status.
 
+### `lookup_ips`
+
+Accepts `ips`, an array of 1 to 100 IP address strings, and optional `database`.
+Returns a `results` array in input order, including duplicates. Each entry has
+the same fields as `lookup_ip`, or `ip` and an `error` object. A missing record
+is a successful result with `found: false`. Any failed address sets the batch's
+MCP `isError` flag while preserving the other results. Cancellation stops the
+batch and returns an error.
+
 ### `lookup_network`
 
 Returns database network records overlapping a CIDR range. It does not return one result per IP address.

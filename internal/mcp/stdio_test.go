@@ -115,8 +115,8 @@ func TestStdioProtocol(t *testing.T) {
 			}
 			listed := call("tools/list", map[string]any{})
 			tools := listed["tools"].([]any)
-			if len(tools) != 3 {
-				t.Fatalf("got %d tools, want 3", len(tools))
+			if len(tools) != 4 {
+				t.Fatalf("got %d tools, want 4", len(tools))
 			}
 			var names []string
 			for _, item := range tools {
@@ -124,6 +124,7 @@ func TestStdioProtocol(t *testing.T) {
 				names = append(names, tool["name"].(string))
 				titles := map[string]string{
 					"lookup_ip":      "Look up an IP address",
+					"lookup_ips":     "Look up IP addresses",
 					"lookup_network": "Query a network",
 					"list_databases": "List databases",
 				}
@@ -144,6 +145,13 @@ func TestStdioProtocol(t *testing.T) {
 			toolCall := func(name string, arguments map[string]any) map[string]any {
 				t.Helper()
 				return call("tools/call", map[string]any{"name": name, "arguments": arguments})
+			}
+			batch := wireContent(
+				t,
+				toolCall("lookup_ips", map[string]any{"ips": []string{"1.0.0.1", "127.0.0.1"}}),
+			)
+			if len(batch["results"].([]any)) != 2 {
+				t.Fatalf("invalid batch response: %v", batch)
 			}
 			invalid := toolCall(
 				"lookup_network",

@@ -1,5 +1,15 @@
 package mcp
 
+const batchOutputSchema = `{
+ "type":"object", "additionalProperties":false, "required":["results"],
+ "properties":{"results":{"type":"array","items":{
+  "anyOf":[` + ipOutputSchema + `,{"type":"object","required":["ip","error"],
+   "properties":{"ip":{"type":"string"},"error":{"type":"object",
+    "required":["code","message"],"properties":{"code":{"type":"string"},"message":{"type":"string"}}}}
+  }]
+ }}}
+}`
+
 // MMDB records have edition-specific fields. Prefixes use their JSON string form.
 const networkOutputSchema = `{
  "type":"object", "additionalProperties":false,
