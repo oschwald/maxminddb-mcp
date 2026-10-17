@@ -2,8 +2,11 @@ package database
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/oschwald/maxminddb-golang/v2"
 )
 
 const (
@@ -257,8 +260,8 @@ func TestListDatabases(t *testing.T) {
 	if db.Name != testDBName {
 		t.Errorf("Expected database name 'GeoLite2-City-Test.mmdb', got '%s'", db.Name)
 	}
-	if db.Type != "City" {
-		t.Errorf("Expected database type 'City', got '%s'", db.Type)
+	if db.Type != "GeoLite2-City" {
+		t.Errorf("Expected database type 'GeoLite2-City', got '%s'", db.Type)
 	}
 	if db.Size <= 0 {
 		t.Errorf("Expected positive database size, got %d", db.Size)
@@ -288,67 +291,6 @@ func TestClose(t *testing.T) {
 	err = manager.Close()
 	if err != nil {
 		t.Errorf("Second close should not error: %v", err)
-	}
-}
-
-func TestInferDatabaseType(t *testing.T) {
-	tests := []struct {
-		filename string
-		expected string
-	}{
-		{testDBName, "City"},
-		{"GeoLite2-Country-Test.mmdb", "Country"},
-		{"GeoLite2-ASN-Test.mmdb", "ASN"},
-		{"GeoIP2-City-Test.mmdb", "City"},
-		{"GeoIP2-Country-Test.mmdb", "Country"},
-		{"GeoIP2-Enterprise-Test.mmdb", "Enterprise"},
-		{"GeoIP2-ISP-Test.mmdb", "ISP"},
-		{"GeoIP2-Domain-Test.mmdb", "Domain"},
-		{"GeoIP2-Connection-Type-Test.mmdb", "Connection Type"},
-		{"GeoIP2-Anonymous-IP-Test.mmdb", "Anonymous IP"},
-		{"unknown-database.mmdb", "Unknown"},
-		{"test.mmdb", "Unknown"},
-	}
-
-	for _, test := range tests {
-		result := inferDatabaseType(test.filename)
-		if result != test.expected {
-			t.Errorf(
-				"inferDatabaseType(%s) = %s, expected %s",
-				test.filename,
-				result,
-				test.expected,
-			)
-		}
-	}
-}
-
-func TestGetDatabaseDescription(t *testing.T) {
-	tests := []struct {
-		dbType   string
-		expected string
-	}{
-		{"City", "IP geolocation with city-level precision"},
-		{"Country", "IP geolocation with country-level precision"},
-		{"ASN", "Autonomous system number and organization"},
-		{"Enterprise", "Enterprise-level IP intelligence"},
-		{"ISP", "Internet service provider information"},
-		{"Domain", "Domain name information"},
-		{"Connection Type", "Connection type classification"},
-		{"Anonymous IP", "Anonymous proxy and VPN detection"},
-		{"Unknown", "MaxMind database file"},
-	}
-
-	for _, test := range tests {
-		result := getDatabaseDescription(test.dbType)
-		if result != test.expected {
-			t.Errorf(
-				"getDatabaseDescription(%s) = %s, expected %s",
-				test.dbType,
-				result,
-				test.expected,
-			)
-		}
 	}
 }
 
@@ -447,5 +389,51 @@ func TestReloadDatabase(t *testing.T) {
 	newTime := databases[0].LastUpdated
 	if !newTime.Equal(initialTime) {
 		t.Error("Expected same timestamp after reload of unchanged file")
+	}
+}
+
+func TestMetadataAndDuplicateNames(t *testing.T) {
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = manager.Close() }()
+	reader, err := maxminddb.Open(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	data, err := os.ReadFile(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := filepath.Join(t.TempDir(), "custom.mmdb")
+	//nolint:gosec // The directory comes from t.TempDir.
+	if err := os.WriteFile(renamed, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.LoadDatabase(renamed); err != nil {
+		t.Fatal(err)
+	}
+	info, ok := manager.GetDatabase("custom.mmdb")
+	if !ok || info.Type != reader.Metadata.DatabaseType ||
+		info.Description != reader.Metadata.Description["en"] ||
+		!info.LastUpdated.Equal(reader.Metadata.BuildTime()) {
+		t.Fatalf("metadata did not come from MMDB: %+v", info)
+	}
+	duplicate := filepath.Join(t.TempDir(), "custom.mmdb")
+	//nolint:gosec // The directory comes from t.TempDir.
+	if err := os.WriteFile(duplicate, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.LoadDatabase(duplicate); err == nil {
+		t.Fatal("accepted duplicate display name")
+	}
+	manager.RemoveDatabaseByPath(duplicate)
+	if got, ok := manager.GetDatabase(
+		"custom.mmdb",
+	); !ok || got.Path != renamed ||
+		len(manager.ListDatabases()) != 1 {
+		t.Fatal("duplicate load or removal changed the original database")
 	}
 }

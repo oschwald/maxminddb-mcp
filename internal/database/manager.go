@@ -257,30 +257,29 @@ func (m *Manager) Close() error {
 
 // loadDatabase loads a database file (must be called with lock held).
 func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
-	// Open the database
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve database path: %w", err)
+	}
+	name := filepath.Base(path)
+	if existing, ok := m.displayToPath[name]; ok && existing != absPath {
+		return fmt.Errorf(
+			"duplicate database name %s: rename one of %s and %s",
+			name,
+			existing,
+			absPath,
+		)
+	}
 	reader, err := maxminddb.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open MMDB file %s: %w", path, err)
 	}
 
-	// Use absolute path as key to avoid collisions
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		absPath = path // fallback to original path
-	}
-
-	// Don't close existing reader - let GC handle it since iterators may be using it
-	// Just replace it in the map
-
-	name := filepath.Base(path)
-	dbType := inferDatabaseType(name)
-	description := getDatabaseDescription(dbType)
-
 	dbInfo := &Info{
 		Name:        name, // Display name remains the base filename
-		Type:        dbType,
-		Description: description,
-		LastUpdated: info.ModTime(),
+		Type:        reader.Metadata.DatabaseType,
+		Description: reader.Metadata.Description["en"],
+		LastUpdated: reader.Metadata.BuildTime(),
 		Size:        info.Size(),
 		Path:        absPath, // Store absolute path
 	}
@@ -289,71 +288,10 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 	m.readers[absPath] = reader
 	m.databases[absPath] = dbInfo
 
-	// Check for duplicate display names and warn if found
-	if existingPath, exists := m.displayToPath[dbInfo.Name]; exists && existingPath != absPath {
-		slog.Warn("Duplicate database name detected",
-			"name", dbInfo.Name,
-			"existing_path", existingPath,
-			"new_path", absPath)
-	}
-
 	// Update display name to path mapping for O(1) lookups
 	m.displayToPath[dbInfo.Name] = absPath
 
 	return nil
-}
-
-// inferDatabaseType infers the database type from filename.
-func inferDatabaseType(filename string) string {
-	lower := strings.ToLower(filename)
-
-	if strings.Contains(lower, "city") {
-		return "City"
-	}
-	if strings.Contains(lower, "country") {
-		return "Country"
-	}
-	if strings.Contains(lower, "asn") {
-		return "ASN"
-	}
-	if strings.Contains(lower, "isp") {
-		return "ISP"
-	}
-	if strings.Contains(lower, "domain") {
-		return "Domain"
-	}
-	if strings.Contains(lower, "enterprise") {
-		return "Enterprise"
-	}
-	if strings.Contains(lower, "anonymous") {
-		return "Anonymous IP"
-	}
-	if strings.Contains(lower, "connection") {
-		return "Connection Type"
-	}
-
-	return "Unknown"
-}
-
-// getDatabaseDescription returns a description for the database type.
-func getDatabaseDescription(dbType string) string {
-	descriptions := map[string]string{
-		"City":            "IP geolocation with city-level precision",
-		"Country":         "IP geolocation with country-level precision",
-		"ASN":             "Autonomous system number and organization",
-		"ISP":             "Internet service provider information",
-		"Domain":          "Domain name information",
-		"Enterprise":      "Enterprise-level IP intelligence",
-		"Anonymous IP":    "Anonymous proxy and VPN detection",
-		"Connection Type": "Connection type classification",
-		"Unknown":         "MaxMind database file",
-	}
-
-	if desc, exists := descriptions[dbType]; exists {
-		return desc
-	}
-
-	return descriptions["Unknown"]
 }
 
 // watchSubdirectory adds a subdirectory to the watcher.
