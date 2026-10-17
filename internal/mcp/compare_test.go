@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/netip"
 	"testing"
 
@@ -104,6 +106,48 @@ func TestComparisonResumeAndCancellation(t *testing.T) {
 	cancel()
 	result, err = server.handleCompareDatabases(ctx, networkRequest(args))
 	assertToolError(t, result, err, "comparison_failed")
+}
+
+func TestComparisonRejectsCursorOutsideQuery(t *testing.T) {
+	server := comparisonServer(t)
+	args := map[string]any{
+		"old_database": "old.mmdb", "new_database": "new.mmdb",
+		"network": "10.0.0.0/16", "max_results": 1,
+	}
+	result, err := server.handleCompareDatabases(t.Context(), networkRequest(args))
+	if err != nil || result.IsError {
+		t.Fatalf("comparison: %+v, %v", result, err)
+	}
+	original := result.StructuredContent.(comparisonResult).ResumeToken
+	data, err := base64.StdEncoding.DecodeString(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token comparisonToken
+	if err := json.Unmarshal(data, &token); err != nil {
+		t.Fatal(err)
+	}
+	for _, next := range []string{"9.255.255.255", "10.1.0.0", "::ffff:10.0.2.0", "fe80::1%eth0", "invalid"} {
+		t.Run(next, func(t *testing.T) {
+			token.Next = next
+			data, err := json.Marshal(token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			args["resume_token"] = base64.StdEncoding.EncodeToString(data)
+			result, err := server.handleCompareDatabases(t.Context(), networkRequest(args))
+			assertToolError(t, result, err, "resume_failed")
+		})
+	}
+	args["resume_token"] = original
+	result, err = server.handleCompareDatabases(t.Context(), networkRequest(args))
+	if err != nil || result.IsError {
+		t.Fatalf("valid token rejected: %+v, %v", result, err)
+	}
+	page := result.StructuredContent.(comparisonResult)
+	if len(page.Changes) != 1 || page.Changes[0].StartIP != "10.0.3.0" {
+		t.Fatalf("tampering changed the original cursor: %+v", page)
+	}
 }
 
 func BenchmarkComparison(b *testing.B) {
