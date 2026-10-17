@@ -4,6 +4,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,10 +140,46 @@ func TestLookupErrors(t *testing.T) {
 	assertToolError(t, result, err, "updates_not_available")
 }
 
+func TestLookupsWithoutDatabases(t *testing.T) {
+	server := testServer(t)
+	server.dbManager.RemoveDatabase("GeoLite2-ASN-Test.mmdb")
+	ipRequest := sdk.CallToolRequest{Params: sdk.CallToolParams{
+		Arguments: map[string]any{"ip": "1.0.0.1"},
+	}}
+	network := networkRequest(map[string]any{"network": "1.0.0.0/8"})
+	result, err := server.handleLookupIP(t.Context(), ipRequest)
+	assertToolError(t, result, err, "no_databases")
+	result, err = server.handleLookupNetwork(t.Context(), network)
+	assertToolError(t, result, err, "no_databases")
+
+	ipRequest.Params.Arguments = map[string]any{"ip": "1.0.0.1", "database": "missing.mmdb"}
+	result, err = server.handleLookupIP(t.Context(), ipRequest)
+	assertToolError(t, result, err, "db_not_found")
+
+	if err := server.dbManager.LoadDatabase(
+		"../../testdata/test-data/GeoLite2-ASN-Test.mmdb",
+	); err != nil {
+		t.Fatal(err)
+	}
+	ipRequest.Params.Arguments = map[string]any{"ip": "1.0.0.1"}
+	result, err = server.handleLookupIP(t.Context(), ipRequest)
+	if err != nil || result.IsError {
+		t.Fatalf("IP lookup after loading: %+v, %v", result, err)
+	}
+	result, err = server.handleLookupNetwork(t.Context(), network)
+	if err != nil || result.IsError {
+		t.Fatalf("network lookup after loading: %+v, %v", result, err)
+	}
+}
+
 func TestPartialUpdateFailure(t *testing.T) {
+	var requests atomic.Int32
 	endpoint := httptest.NewServer(
 		http.HandlerFunc(
-			func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) },
+			func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.WriteHeader(http.StatusUnauthorized)
+			},
 		),
 	)
 	defer endpoint.Close()
@@ -153,6 +190,7 @@ func TestPartialUpdateFailure(t *testing.T) {
 	cfg.MaxMind.LicenseKey = "test"
 	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
 	cfg.MaxMind.Endpoint = endpoint.URL
+	cfg.MaxMind.DatabaseDir = t.TempDir()
 	var err error
 	server.updater, err = database.NewUpdater(cfg, server.dbManager)
 	if err != nil {
@@ -168,5 +206,8 @@ func TestPartialUpdateFailure(t *testing.T) {
 	updates := result.StructuredContent.(map[string]any)["results"].([]database.UpdateResult)
 	if len(updates) != 1 || updates[0].Error == "" {
 		t.Fatalf("missing edition error: %+v", updates)
+	}
+	if requests.Load() == 0 {
+		t.Fatal("update failed before reaching the endpoint")
 	}
 }

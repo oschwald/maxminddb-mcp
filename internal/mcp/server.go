@@ -278,7 +278,10 @@ func (s *Server) handleLookupNetwork(
 		if dbName == "" {
 			databases := s.dbManager.ListDatabases()
 			if len(databases) == 0 {
-				return toolError("no_databases", "No databases available"), nil
+				return toolError(
+					"no_databases",
+					"No databases available. Check server logs for loading or download status.",
+				), nil
 			}
 			if len(databases) > 1 {
 				return toolError(
@@ -424,6 +427,13 @@ func (s *Server) lookupIPInAllDatabases(ip netip.Addr, ipStr string) (*mcp.CallT
 		}
 
 		results[dbInfo.Name] = dbResult
+	}
+
+	if len(results) == 0 {
+		return toolError(
+			"no_databases",
+			"No databases available. Check server logs for loading or download status.",
+		), nil
 	}
 
 	result := map[string]any{
