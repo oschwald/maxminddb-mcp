@@ -11,6 +11,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -35,6 +38,51 @@ type Updater struct {
 	client   *client.Client
 	manager  *Manager
 	updating chan struct{}
+	status   UpdateStatus
+	statusMu sync.RWMutex
+}
+
+// UpdateStatus describes the active or most recent download attempt.
+type UpdateStatus struct {
+	State   string         `json:"state"`
+	Error   string         `json:"error,omitempty"`
+	Results []UpdateResult `json:"results,omitempty"`
+}
+
+// Status returns a snapshot without waiting for an active download.
+func (u *Updater) Status() UpdateStatus {
+	u.statusMu.RLock()
+	defer u.statusMu.RUnlock()
+	status := u.status
+	status.Results = slices.Clone(status.Results)
+	return status
+}
+
+func (u *Updater) setStatus(status UpdateStatus) {
+	u.statusMu.Lock()
+	defer u.statusMu.Unlock()
+	u.status = status
+}
+
+func (u *Updater) finishUpdate(results []UpdateResult, err error) {
+	status := UpdateStatus{State: "idle", Results: slices.Clone(results)}
+	if err != nil {
+		status.State, status.Error = "failed", err.Error()
+	}
+	for _, result := range status.Results {
+		if result.Error != "" {
+			status.State = "failed"
+		}
+	}
+	status.Error = u.redact(status.Error)
+	u.setStatus(status)
+}
+
+func (u *Updater) redact(message string) string {
+	if key := u.config.MaxMind.LicenseKey; key != "" {
+		return strings.ReplaceAll(message, key, "[redacted]")
+	}
+	return message
 }
 
 // NewUpdater creates a new database updater.
@@ -58,24 +106,33 @@ func NewUpdater(cfg *config.Config, manager *Manager) (*Updater, error) {
 		config:   cfg,
 		client:   &mclient,
 		manager:  manager,
+		status:   UpdateStatus{State: "idle"},
+	}
+	if cfg.AutoUpdate || len(manager.ListDatabases()) == 0 {
+		updater.status.State = "pending"
 	}
 
 	return updater, nil
 }
 
 // UpdateAll updates all configured databases.
-func (u *Updater) UpdateAll(ctx context.Context, report func(string)) ([]UpdateResult, error) {
+func (u *Updater) UpdateAll(
+	ctx context.Context,
+	report func(string),
+) (results []UpdateResult, err error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case u.updating <- struct{}{}:
 	}
 	defer func() { <-u.updating }()
+	u.setStatus(UpdateStatus{State: "updating"})
+	defer func() { u.finishUpdate(results, err) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	results := make([]UpdateResult, 0, len(u.config.MaxMind.Editions))
+	results = make([]UpdateResult, 0, len(u.config.MaxMind.Editions))
 
 	for _, edition := range u.config.MaxMind.Editions {
 		if err := ctx.Err(); err != nil {
@@ -89,18 +146,23 @@ func (u *Updater) UpdateAll(ctx context.Context, report func(string)) ([]UpdateR
 }
 
 // UpdateDatabase updates a specific database.
-func (u *Updater) UpdateDatabase(ctx context.Context, edition string) (UpdateResult, error) {
+func (u *Updater) UpdateDatabase(
+	ctx context.Context,
+	edition string,
+) (result UpdateResult, err error) {
 	select {
 	case <-ctx.Done():
 		return UpdateResult{}, ctx.Err()
 	case u.updating <- struct{}{}:
 	}
 	defer func() { <-u.updating }()
+	u.setStatus(UpdateStatus{State: "updating"})
+	defer func() { u.finishUpdate([]UpdateResult{result}, err) }()
 	if err := ctx.Err(); err != nil {
 		return UpdateResult{}, err
 	}
 
-	result := u.updateDatabase(ctx, edition, nil)
+	result = u.updateDatabase(ctx, edition, nil)
 	return result, nil
 }
 
@@ -125,9 +187,10 @@ func (u *Updater) RunUpdates(ctx context.Context) {
 }
 
 func (u *Updater) updateAndLog(ctx context.Context) {
+	slog.Info("Checking for database updates")
 	results, err := u.UpdateAll(ctx, nil)
 	if err != nil {
-		slog.Error("Database update failed", "err", err)
+		slog.Error("Database update failed", "err", u.redact(err.Error()))
 	}
 	for _, result := range results {
 		if result.Error != "" {
@@ -143,8 +206,9 @@ func (u *Updater) updateDatabase(
 	ctx context.Context,
 	edition string,
 	report func(string),
-) UpdateResult {
-	result := UpdateResult{
+) (result UpdateResult) {
+	defer func() { result.Error = u.redact(result.Error) }()
+	result = UpdateResult{
 		Database: edition,
 		Updated:  false,
 	}
