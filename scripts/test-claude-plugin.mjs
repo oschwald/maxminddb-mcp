@@ -34,6 +34,8 @@ const marketplace = join(temp, "marketplace");
 const plugin = join(marketplace, "plugin");
 const databases = join(temp, "MMDB files");
 const secret = "dummy-license-for-plugin-test";
+const debugLog = join(temp, "claude-debug.log");
+let diagnostics = "";
 const env = {
   PATH: process.env.PATH,
   SystemRoot: process.env.SystemRoot,
@@ -45,13 +47,18 @@ const env = {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 };
 function claude(...args) {
-  const output = execFileSync(claudeExecutable, args, {
-    cwd: temp,
-    env,
-    encoding: "utf8",
-    timeout: 45000,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const output = execFileSync(
+    claudeExecutable,
+    ["--debug-file", debugLog, ...args],
+    {
+      cwd: temp,
+      env,
+      encoding: "utf8",
+      timeout: 45000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }
+  );
+  diagnostics += output;
   assert.ok(
     !output.includes(secret),
     "Claude output must not expose the license key"
@@ -140,6 +147,10 @@ try {
   console.log(
     "Claude plugin installation, settings, replacement, and credential validation passed."
   );
+} catch (error) {
+  const debug = await readFile(debugLog, "utf8").catch(() => "");
+  console.error((diagnostics + debug).replaceAll(secret, "[REDACTED]"));
+  throw error;
 } finally {
   await rm(temp, { recursive: true, force: true });
 }
