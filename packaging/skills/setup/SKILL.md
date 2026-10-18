@@ -29,8 +29,8 @@ executable or a Docker container, depending on the package.
 Keep license keys out of conversation and tool arguments. Do not read credential
 files into the conversation, edit the installed plugin, or overwrite existing
 configuration. For missing credentials, direct the user to configure them outside
-chat using the README. Checking setup does not require installing or updating a
-database through a tool.
+chat using the [configuration guide](https://github.com/oschwald/maxminddb-mcp/blob/main/docs/configuration.md).
+Checking setup does not require installing or updating a database through a tool.
 
 ## Client configuration
 
@@ -43,8 +43,8 @@ database through a tool.
   If `MAXMINDDB_MCP_CONFIG` is set, the executable uses that file. Otherwise it checks
   `~/.config/maxminddb-mcp/config.toml`,
   `~/.config/maxminddb-mcp/GeoIP.conf`, then `/etc/GeoIP.conf`.
-  See the ChatGPT desktop and configuration sections of the
-  [README](https://github.com/oschwald/maxminddb-mcp#configuration).
+  See [client setup](https://github.com/oschwald/maxminddb-mcp/blob/main/docs/clients.md)
+  and [config discovery](https://github.com/oschwald/maxminddb-mcp/blob/main/docs/configuration.md#config-discovery-and-defaults).
   A manually configured stdio server can pass environment settings.
 - **Gemini:** Direct the user to `gemini extensions config maxminddb` to set the
   account ID and license key outside chat. Release extensions use a native

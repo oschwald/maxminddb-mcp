@@ -1,6 +1,6 @@
 # Development guide
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, pinned tool versions, architecture, tests, and release checks. Read [README.md](README.md) for configuration and tool contracts.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, pinned tool versions, architecture, tests, and release checks. Read [Configuration](docs/configuration.md) for config behavior and [Tool reference](docs/tools.md) for tool contracts. [Client setup](docs/clients.md) covers installation and integration.
 
 ## Commands
 
