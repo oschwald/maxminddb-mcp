@@ -75,6 +75,20 @@ function claude(...args) {
   return result.stdout;
 }
 
+async function checkSavedLicense() {
+  await writeFile(debugLog, "");
+  assert.match(
+    claude("mcp", "list"),
+    /plugin:maxminddb:maxminddb:.*Failed to connect/
+  );
+  const debug = await readFile(debugLog, "utf8");
+  assert.ok(
+    !debug.includes(secret),
+    "Claude debug output must not expose the license key"
+  );
+  assert.match(debug, /database editions must be edition IDs, not paths:/);
+}
+
 try {
   await mkdir(join(marketplace, ".claude-plugin"), { recursive: true });
   assert.equal(
@@ -123,6 +137,20 @@ try {
     "License key must not be in ordinary settings"
   );
 
+  // Edition validation follows license-key validation and precedes downloads.
+  claude(
+    "plugin",
+    "install",
+    id,
+    "--config",
+    "maxminddb.download_enabled=true",
+    "--config",
+    "maxminddb.account_id=1",
+    "--config",
+    "maxminddb.editions=../invalid"
+  );
+  await checkSavedLicense();
+
   // Replace the package and its MCPB cache, keeping the client's saved settings.
   await rm(plugin, { recursive: true });
   assert.equal(
@@ -133,28 +161,22 @@ try {
     }),
     true
   );
+  await checkSavedLicense();
+  claude(
+    "plugin",
+    "install",
+    id,
+    "--config",
+    "maxminddb.download_enabled=false"
+  );
   assert.match(claude("mcp", "list"), /plugin:maxminddb:maxminddb:.*Connected/);
   assert.deepEqual(
     await readFile(join(databases, "GeoLite2-ASN-Test.mmdb")),
     fixture
   );
 
-  // Reject invalid credentials before any download request can be made.
-  claude(
-    "plugin",
-    "install",
-    id,
-    "--config",
-    "maxminddb.download_enabled=true",
-    "--config",
-    "maxminddb.account_id=invalid-account"
-  );
-  assert.match(
-    claude("mcp", "list"),
-    /plugin:maxminddb:maxminddb:.*Failed to connect/
-  );
   console.log(
-    "Claude plugin installation, settings, replacement, and credential validation passed."
+    "Claude plugin installation, settings, replacement, and credential retention passed."
   );
 } catch (error) {
   const debug = await readFile(debugLog, "utf8").catch(() => "");
