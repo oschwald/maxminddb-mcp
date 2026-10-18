@@ -41,7 +41,7 @@ func (s *Server) registerSummaryTool() {
 		"summarize_network",
 		mcp.WithToolTitle("Summarize a network"),
 		mcp.WithDescription(
-			"Group matching records by a scalar field, such as country or ASN, and count records and covered addresses within a CIDR. Use lookup_network to retrieve individual records. IPv4 aliases are excluded. Exceeding 10,000 scanned records or 100 groups returns an error. Use a smaller CIDR if a limit is reached.",
+			"Group matching records by a scalar field, such as country.iso_code or autonomous_system_number. Count records and covered addresses within a CIDR. Use lookup_network to retrieve individual records. IPv4 aliases are excluded. Exceeding 10,000 scanned records or 100 groups returns an error. Use a smaller CIDR if a limit is reached.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
