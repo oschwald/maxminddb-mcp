@@ -17,14 +17,18 @@ func (s *Server) registerVerificationTool() {
 		"verify_database",
 		mcp.WithToolTitle("Verify a database"),
 		mcp.WithDescription(
-			"Verify the integrity of a loaded database. Only one verification runs at a time. Cancellation can stop a queued request, but verification runs to completion once started.",
+			"Check a loaded MMDB for structural corruption, such as after importing a database or encountering decode errors. Returns valid=true on success or a verification error. Use inspect_database for metadata and field samples. Only one verification runs at a time. Cancellation can stop a queued request, but verification runs to completion once started.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithOutputSchema[verificationResult](),
-		mcp.WithString("database", mcp.Required()),
+		mcp.WithString(
+			"database",
+			mcp.Required(),
+			mcp.Description("Exact filename of a loaded database from list_databases."),
+		),
 	), s.handleVerifyDatabase)
 }
 

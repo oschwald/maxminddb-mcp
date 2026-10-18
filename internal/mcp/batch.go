@@ -13,7 +13,7 @@ func (s *Server) registerBatchTool() {
 		"lookup_ips",
 		mcp.WithToolTitle("Look up IP addresses"),
 		mcp.WithDescription(
-			"Look up 1 to 100 IP addresses in input order, in one database or all loaded databases. Each result includes its IP and lookup data or an error.",
+			"Look up a batch of IP addresses in local MMDB databases. Each result contains the matching record and network, found=false for no match, or an error for that address. Other addresses are still processed after an error. Use lookup_ip for a single address.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -27,10 +27,15 @@ func (s *Server) registerBatchTool() {
 			mcp.MinItems(1),
 			mcp.MaxItems(maxBatchIPs),
 			mcp.WithStringItems(),
+			mcp.Description(
+				"IPv4 or IPv6 addresses to look up. Results preserve input order, including duplicate addresses.",
+			),
 		),
 		mcp.WithString(
 			"database",
-			mcp.Description("Specific database from list_databases (optional)"),
+			mcp.Description(
+				"Exact filename from list_databases. Omit to query all loaded databases.",
+			),
 		),
 	), s.handleLookupIPs)
 }

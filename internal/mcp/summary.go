@@ -41,18 +41,24 @@ func (s *Server) registerSummaryTool() {
 		"summarize_network",
 		mcp.WithToolTitle("Summarize a network"),
 		mcp.WithDescription(
-			"Group matching records by a scalar field and count records and covered addresses within a CIDR. Limited to 10,000 scanned records and 100 groups. IPv4 aliases are excluded.",
+			"Group matching records by a scalar field, such as country.iso_code or autonomous_system_number. Count records and covered addresses within a CIDR. Use lookup_network to retrieve individual records. IPv4 aliases are excluded. Exceeding 10,000 scanned records or 100 groups returns an error. Use a smaller CIDR if a limit is reached.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithOutputSchema[summaryResult](),
-		mcp.WithString("database", mcp.Required()),
+		mcp.WithString(
+			"database",
+			mcp.Required(),
+			mcp.Description("Exact filename of a loaded database from list_databases."),
+		),
 		mcp.WithString(
 			"network",
 			mcp.Required(),
-			mcp.Description("IPv4 /8 or smaller, or IPv6 /32 or smaller"),
+			mcp.Description(
+				"CIDR to summarize. Use an IPv4 prefix length of 8 or greater, or a native IPv6 prefix length of 32 or greater.",
+			),
 		),
 		mcp.WithString(
 			"group_by",
@@ -60,7 +66,7 @@ func (s *Server) registerSummaryTool() {
 			mcp.MinLength(1),
 			mcp.MaxLength(256),
 			mcp.Description(
-				"Field path, array index, or $ for a scalar record. Missing fields form a separate group.",
+				"Path to a scalar field, for example country.iso_code or autonomous_system_number. Use inspect_database to find paths. Supports numeric array indexes and $ for a scalar record. Missing fields form a separate group.",
 			),
 		),
 		filtersOption(),

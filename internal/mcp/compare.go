@@ -48,7 +48,7 @@ func (s *Server) registerComparisonTool() {
 		"compare_databases",
 		mcp.WithToolTitle("Compare databases"),
 		mcp.WithDescription(
-			"Compare lookup answers in two loaded databases within a CIDR. Returns paginated added, removed, and changed address ranges. Equal answers with different network boundaries are unchanged.",
+			"Compare lookup answers in two loaded databases within a CIDR, for example before and after an update. Returns paginated added, removed, and changed address ranges. Equal answers with different network boundaries are unchanged. Pages scan at most 10,000 segments and can contain no changes while has_more is true. Continue until has_more is false.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -58,15 +58,37 @@ func (s *Server) registerComparisonTool() {
 		mcp.WithString(
 			"old_database",
 			mcp.Required(),
+			mcp.Description(
+				"Baseline database's exact filename from list_databases. Supplies the before values.",
+			),
 		),
-		mcp.WithString("new_database", mcp.Required()),
+		mcp.WithString(
+			"new_database",
+			mcp.Required(),
+			mcp.Description(
+				"Comparison database's exact filename from list_databases. Supplies the after values. Both databases must be loaded.",
+			),
+		),
 		mcp.WithString(
 			"network",
 			mcp.Required(),
-			mcp.Description("IPv4 /8 or smaller, or IPv6 /32 or smaller"),
+			mcp.Description(
+				"CIDR to compare. Use an IPv4 prefix length of 8 or greater, or a native IPv6 prefix length of 32 or greater. Repeat on each page.",
+			),
 		),
-		mcp.WithInteger("max_results", mcp.Min(1), mcp.Max(1000), mcp.DefaultNumber(100)),
-		mcp.WithString("resume_token"),
+		mcp.WithInteger(
+			"max_results",
+			mcp.Min(1),
+			mcp.Max(1000),
+			mcp.DefaultNumber(100),
+			mcp.Description("Maximum changed address ranges to return on this page."),
+		),
+		mcp.WithString(
+			"resume_token",
+			mcp.Description(
+				"Token from the previous page. Omit on the first request. Repeat both database names and network. If either loaded database changed, start a new comparison.",
+			),
+		),
 	), s.handleCompareDatabases)
 }
 
