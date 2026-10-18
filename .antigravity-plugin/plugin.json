@@ -1,7 +1,7 @@
 {
   "name": "maxminddb",
   "displayName": "MaxMindDB",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Look up IP locations and network ownership in local MaxMind databases.",
   "skills": ["./packaging/skills/"]
 }
