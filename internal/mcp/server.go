@@ -34,6 +34,9 @@ type Server struct {
 }
 
 const serverInstructions = `Query local GeoIP2, GeoLite2, and custom MMDB databases.
+Results describe stored database information, not live network observations.
+IP geolocation is approximate. Do not use it to identify a person's precise location.
+ASN data describes autonomous systems and their associated organizations, not the identity of an IP address user.
 Call list_databases first and use its exact filenames when selecting a database.
 Use lookup_ip for an address or lookup_ips for up to 100 addresses. Use fields to reduce returned data.
 Use lookup_network for stored records overlapping a CIDR, or lookup_range for inclusive start_ip and end_ip.
@@ -309,20 +312,23 @@ func (s *Server) lookupNetworks(
 			if len(databases) == 0 {
 				return toolError(
 					"no_databases",
-					"No databases available. Check server logs for loading or download status.",
+					"No databases available. Call list_databases for download status and setup instructions.",
 				), nil
 			}
 			if len(databases) > 1 {
 				return toolError(
 					"database_required",
-					"Specify database when more than one database is available",
+					"Specify database when more than one database is available. Call list_databases for exact filenames.",
 				), nil
 			}
 			dbName = databases[0].Name
 		}
 		reader, exists := s.dbManager.GetReader(dbName)
 		if !exists {
-			return toolError("db_not_found", "Database not found: "+dbName), nil
+			return toolError(
+				"db_not_found",
+				"Database not found: "+dbName+". Call list_databases for exact filenames and setup status.",
+			), nil
 		}
 		errorCode := "iterator_creation_failed"
 		if resumeToken != "" {
@@ -455,7 +461,10 @@ func (s *Server) lookupIPInSingleDatabase(
 ) (*mcp.CallToolResult, error) {
 	reader, exists := s.dbManager.GetReader(dbName)
 	if !exists {
-		return toolError("db_not_found", "Database not found: "+dbName), nil
+		return toolError(
+			"db_not_found",
+			"Database not found: "+dbName+". Call list_databases for exact filenames and setup status.",
+		), nil
 	}
 
 	var record any
@@ -514,7 +523,7 @@ func (s *Server) lookupIPInAllDatabases(
 	if len(results) == 0 {
 		return toolError(
 			"no_databases",
-			"No databases available. Check server logs for loading or download status.",
+			"No databases available. Call list_databases for download status and setup instructions.",
 		), nil
 	}
 

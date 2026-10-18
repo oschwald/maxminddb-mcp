@@ -16,10 +16,10 @@ type databaseMetadata struct {
 	Description              map[string]string `json:"description"`
 	DatabaseType             string            `json:"database_type"`
 	Languages                []string          `json:"languages"`
-	BuildEpoch               uint              `json:"build_epoch"`
+	BuildEpoch               uint              `json:"build_epoch"                 jsonschema:"Database build time in Unix seconds."`
 	IPVersion                uint              `json:"ip_version"`
-	RecordSize               uint              `json:"record_size"`
-	NodeCount                uint              `json:"node_count"`
+	RecordSize               uint              `json:"record_size"                 jsonschema:"Size in bits of each search-tree record."`
+	NodeCount                uint              `json:"node_count"                  jsonschema:"Number of search-tree nodes, not the count of data records or networks."`
 	BinaryFormatMajorVersion uint              `json:"binary_format_major_version"`
 	BinaryFormatMinorVersion uint              `json:"binary_format_minor_version"`
 }
@@ -34,10 +34,10 @@ type inspectionResult struct {
 	Database        string           `json:"database"`
 	Fields          []observedField  `json:"fields"`
 	Metadata        databaseMetadata `json:"metadata"`
-	SampledRecords  int              `json:"sampled_records"`
-	SampleLimit     int              `json:"sample_limit"`
-	SchemaComplete  bool             `json:"schema_complete"`
-	FieldsTruncated bool             `json:"fields_truncated"`
+	SampledRecords  int              `json:"sampled_records"  jsonschema:"Network records sampled in database order, not a statistically representative sample."`
+	SampleLimit     int              `json:"sample_limit"     jsonschema:"Requested record sampling limit. Field traversal limits may stop sampling earlier."`
+	SchemaComplete  bool             `json:"schema_complete"  jsonschema:"Always false. A field absent from this sample may exist in other records."`
+	FieldsTruncated bool             `json:"fields_truncated" jsonschema:"True when field traversal limits or unaddressable keys omitted fields. Does not indicate whether all records were sampled."`
 }
 
 func (s *Server) registerInspectionTool() {
@@ -76,7 +76,10 @@ func (s *Server) handleInspectDatabase(
 	name := request.GetString("database", "")
 	reader, ok := s.dbManager.GetReader(name)
 	if !ok {
-		return toolError("db_not_found", "Database not found: "+name), nil
+		return toolError(
+			"db_not_found",
+			"Database not found: "+name+". Call list_databases for exact filenames and setup status.",
+		), nil
 	}
 	limit, err := boundedInteger(request, "sample_size", 100, 1000)
 	if err != nil {

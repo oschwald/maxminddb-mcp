@@ -15,10 +15,11 @@ const networkOutputSchema = `{
  "type":"object", "additionalProperties":false,
  "required":["iterator_id","resume_token","results","has_more","total_processed","total_matched"],
  "properties":{
-  "iterator_id":{"type":"string"}, "resume_token":{"type":"string"},
-  "has_more":{"type":"boolean"},
-  "total_processed":{"type":"integer","minimum":0},
-  "total_matched":{"type":"integer","minimum":0},
+  "iterator_id":{"type":"string","description":"Identifier for continuing this live query with the same parameters."},
+  "resume_token":{"type":"string","description":"Token for resuming after the last returned record if the live iterator expires."},
+  "has_more":{"type":"boolean","description":"True when another matching record exists. Continue with the same query parameters."},
+  "total_processed":{"type":"integer","minimum":0,"description":"Cumulative records processed across pages, including nonmatching records scanned ahead to find the next match."},
+  "total_matched":{"type":"integer","minimum":0,"description":"Cumulative matching records returned across pages, not the count on this page."},
   "results":{"type":"array","items":{
    "type":"object","additionalProperties":false,"required":["network","data"],
    "properties":{"network":{"type":"string"},"data":{}}

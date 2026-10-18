@@ -24,13 +24,13 @@ import (
 // Info holds metadata about a database.
 type Info struct {
 	Generation  string    `json:"-"`
-	LastUpdated time.Time `json:"last_updated"`
+	LastUpdated time.Time `json:"last_updated" jsonschema:"Database build time from MMDB metadata, not the time the file was downloaded or modified."`
 	fileInfo    os.FileInfo
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	Description string `json:"description"`
 	Path        string `json:"-"`
-	Size        int64  `json:"size"`
+	Size        int64  `json:"size"         jsonschema:"Database file size in bytes."`
 }
 
 // Manager handles MMDB database lifecycle.

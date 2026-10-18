@@ -29,7 +29,7 @@ type databaseChange struct {
 type comparisonResult struct {
 	ResumeToken     string           `json:"resume_token"`
 	Changes         []databaseChange `json:"changes"`
-	ScannedSegments int              `json:"scanned_segments"`
+	ScannedSegments int              `json:"scanned_segments" jsonschema:"Address segments examined on this page, including unchanged segments. Not cumulative across pages."`
 	HasMore         bool             `json:"has_more"`
 }
 
@@ -124,7 +124,7 @@ func (s *Server) handleCompareDatabases(
 	if !oldOK || !newOK {
 		return toolError(
 			"db_not_found",
-			"Both old_database and new_database must name loaded databases",
+			"Both old_database and new_database must name loaded databases. Call list_databases for exact filenames and setup status.",
 		), nil
 	}
 	query := iprange.FromPrefix(prefix)

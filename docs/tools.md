@@ -21,7 +21,7 @@ Arguments: required `ip` (IPv4 or IPv6), optional `database` from `list_database
 }
 ```
 
-A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`. If no database is available, an all-database lookup returns `no_databases`, as network lookup does. Check server logs for loading or download status.
+A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`. If no database is available, an all-database lookup returns `no_databases`, as network lookup does. Call `list_databases` for download status and setup instructions. For `db_not_found` or `database_required`, use its exact database filenames.
 
 ## `lookup_ips`
 
@@ -219,7 +219,7 @@ Import a database from an HTTP or HTTPS URL in any mode:
 }
 ```
 
-`database` is a filename, not a path. The server installs into the configured MaxMind download folder, or the first configured folder in directory mode. The folder must be writable. Set `overwrite: true` to replace an existing file. A name already loaded from another folder is rejected.
+`database` is a filename, not a path. The server installs into the configured MaxMind download folder, or the first configured folder in directory mode. The folder must be writable. By default, an existing file is rejected. Set `overwrite: true` to replace it after validation. A name already loaded from another folder is rejected even with `overwrite: true`. For a MaxMind edition with managed updates, use `install_edition` when available.
 
 Supported downloads are raw MMDB, gzip-compressed MMDB, and tar, tar.gz, or ZIP archives containing exactly one regular `.mmdb` file. Archive paths are ignored. Both the download and expanded data are limited to 1 GiB, including HTTP bodies before and after gzip decoding. Archives can contain up to 1,024 entries. ZIP directory counts and offsets are checked before allocating entry metadata. The server verifies the MMDB before replacing an existing database and loads it immediately. Invalid or interrupted downloads leave the existing file intact. Cancellation stops network reads and lock waits. If verification has started, it must finish before cancellation is checked again.
 
