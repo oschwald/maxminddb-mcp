@@ -76,7 +76,10 @@ func (s *Server) handleInspectDatabase(
 	name := request.GetString("database", "")
 	reader, ok := s.dbManager.GetReader(name)
 	if !ok {
-		return toolError("db_not_found", "Database not found: "+name), nil
+		return toolError(
+			"db_not_found",
+			"Database not found: "+name+". Call list_databases for exact filenames and setup status.",
+		), nil
 	}
 	limit, err := boundedInteger(request, "sample_size", 100, 1000)
 	if err != nil {

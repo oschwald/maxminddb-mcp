@@ -39,7 +39,10 @@ func (s *Server) handleVerifyDatabase(
 	name := request.GetString("database", "")
 	reader, ok := s.dbManager.GetReader(name)
 	if !ok {
-		return toolError("db_not_found", "Database not found: "+name), nil
+		return toolError(
+			"db_not_found",
+			"Database not found: "+name+". Call list_databases for exact filenames and setup status.",
+		), nil
 	}
 	return s.verifyDatabase(ctx, name, reader.Verify, s.progressReporter(ctx, request)), nil
 }

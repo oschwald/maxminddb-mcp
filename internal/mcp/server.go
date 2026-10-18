@@ -309,20 +309,23 @@ func (s *Server) lookupNetworks(
 			if len(databases) == 0 {
 				return toolError(
 					"no_databases",
-					"No databases available. Check server logs for loading or download status.",
+					"No databases available. Call list_databases for download status and setup instructions.",
 				), nil
 			}
 			if len(databases) > 1 {
 				return toolError(
 					"database_required",
-					"Specify database when more than one database is available",
+					"Specify database when more than one database is available. Call list_databases for exact filenames.",
 				), nil
 			}
 			dbName = databases[0].Name
 		}
 		reader, exists := s.dbManager.GetReader(dbName)
 		if !exists {
-			return toolError("db_not_found", "Database not found: "+dbName), nil
+			return toolError(
+				"db_not_found",
+				"Database not found: "+dbName+". Call list_databases for exact filenames and setup status.",
+			), nil
 		}
 		errorCode := "iterator_creation_failed"
 		if resumeToken != "" {
@@ -455,7 +458,10 @@ func (s *Server) lookupIPInSingleDatabase(
 ) (*mcp.CallToolResult, error) {
 	reader, exists := s.dbManager.GetReader(dbName)
 	if !exists {
-		return toolError("db_not_found", "Database not found: "+dbName), nil
+		return toolError(
+			"db_not_found",
+			"Database not found: "+dbName+". Call list_databases for exact filenames and setup status.",
+		), nil
 	}
 
 	var record any
@@ -514,7 +520,7 @@ func (s *Server) lookupIPInAllDatabases(
 	if len(results) == 0 {
 		return toolError(
 			"no_databases",
-			"No databases available. Check server logs for loading or download status.",
+			"No databases available. Call list_databases for download status and setup instructions.",
 		), nil
 	}
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Direct missing-database and database-selection errors to `list_databases` for exact filenames, download status, and setup instructions.
+
 ## [0.3.1] - 2026-10-17
 
 ### Changed

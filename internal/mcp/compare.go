@@ -124,7 +124,7 @@ func (s *Server) handleCompareDatabases(
 	if !oldOK || !newOK {
 		return toolError(
 			"db_not_found",
-			"Both old_database and new_database must name loaded databases",
+			"Both old_database and new_database must name loaded databases. Call list_databases for exact filenames and setup status.",
 		), nil
 	}
 	query := iprange.FromPrefix(prefix)
