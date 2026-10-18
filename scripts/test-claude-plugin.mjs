@@ -39,7 +39,9 @@ let diagnostics = "";
 const env = {
   PATH: process.env.PATH,
   SystemRoot: process.env.SystemRoot,
-  HOME: home,
+  // macOS uses HOME to find its Keychain. CLAUDE_CONFIG_DIR isolates Claude's
+  // settings and gives its test credentials a separate Keychain service name.
+  HOME: process.platform === "darwin" ? process.env.HOME : home,
   USERPROFILE: home,
   XDG_CONFIG_HOME: join(home, ".config"),
   XDG_CACHE_HOME: join(home, ".cache"),
