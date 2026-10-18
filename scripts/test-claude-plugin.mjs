@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   copyFile,
   mkdir,
@@ -49,7 +49,7 @@ const env = {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 };
 function claude(...args) {
-  const output = execFileSync(
+  const result = spawnSync(
     claudeExecutable,
     ["--debug-file", debugLog, ...args],
     {
@@ -60,12 +60,19 @@ function claude(...args) {
       stdio: ["pipe", "pipe", "pipe"],
     }
   );
+  const output = (result.stdout ?? "") + (result.stderr ?? "");
   diagnostics += output;
   assert.ok(
     !output.includes(secret),
     "Claude output must not expose the license key"
   );
-  return output;
+  if (result.error) throw result.error;
+  assert.equal(
+    result.status,
+    0,
+    `Claude command failed (${result.signal ?? result.status})`
+  );
+  return result.stdout;
 }
 
 try {
@@ -152,7 +159,7 @@ try {
 } catch (error) {
   const debug = await readFile(debugLog, "utf8").catch(() => "");
   console.error((diagnostics + debug).replaceAll(secret, "[REDACTED]"));
-  throw error;
+  throw new Error(String(error).replaceAll(secret, "[REDACTED]"));
 } finally {
   await rm(temp, { recursive: true, force: true });
 }
