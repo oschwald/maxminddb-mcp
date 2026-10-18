@@ -34,6 +34,9 @@ type Server struct {
 }
 
 const serverInstructions = `Query local GeoIP2, GeoLite2, and custom MMDB databases.
+Results describe stored database information, not live network observations.
+IP geolocation is approximate. Do not use it to identify a person's precise location.
+ASN data describes autonomous systems and their associated organizations, not the identity of an IP address user.
 Call list_databases first and use its exact filenames when selecting a database.
 Use lookup_ip for an address or lookup_ips for up to 100 addresses. Use fields to reduce returned data.
 Use lookup_network for stored records overlapping a CIDR, or lookup_range for inclusive start_ip and end_ip.
