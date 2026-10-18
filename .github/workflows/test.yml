@@ -42,10 +42,22 @@ jobs:
       - name: Install packaging tools
         run: npm ci
 
+      - name: Create a test Keychain
+        if: runner.os == 'macOS'
+        run: |
+          security create-keychain -p '' "$RUNNER_TEMP/maxminddb-test.keychain-db"
+          security default-keychain -s "$RUNNER_TEMP/maxminddb-test.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/maxminddb-test.keychain-db"
+          security unlock-keychain -p '' "$RUNNER_TEMP/maxminddb-test.keychain-db"
+
       - name: Test installed extension
         env:
           MAXMINDDB_TEST_CLAUDE_PLUGIN: '1'
         run: npx --yes --package @anthropic-ai/claude-code@2.1.302 -c 'npm run test:extensions'
+
+      - name: Delete the test Keychain
+        if: always() && runner.os == 'macOS'
+        run: security delete-keychain "$RUNNER_TEMP/maxminddb-test.keychain-db"
 
       - name: Test fixture generator
         if: runner.os == 'Linux'
