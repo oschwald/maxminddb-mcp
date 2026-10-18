@@ -9,12 +9,25 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { unpackExtension } from "@anthropic-ai/mcpb";
 
 const source = process.argv[2];
 if (!source)
   throw new Error("Usage: node scripts/test-claude-plugin.mjs PLUGIN_ZIP");
+const require = createRequire(import.meta.url);
+const claudePackage = require.resolve(
+  "@anthropic-ai/claude-code/package.json",
+  {
+    paths: process.env.PATH.split(delimiter),
+  }
+);
+// Bypass npm's Windows command shim without passing arguments through a shell.
+const claudeExecutable = join(
+  dirname(claudePackage),
+  require(claudePackage).bin.claude
+);
 const temp = await mkdtemp(join(tmpdir(), "maxminddb claude "));
 const home = join(temp, "home");
 const marketplace = join(temp, "marketplace");
@@ -23,6 +36,7 @@ const databases = join(temp, "MMDB files");
 const secret = "dummy-license-for-plugin-test";
 const env = {
   PATH: process.env.PATH,
+  SystemRoot: process.env.SystemRoot,
   HOME: home,
   USERPROFILE: home,
   XDG_CONFIG_HOME: join(home, ".config"),
@@ -31,7 +45,7 @@ const env = {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 };
 function claude(...args) {
-  const output = execFileSync("claude", args, {
+  const output = execFileSync(claudeExecutable, args, {
     cwd: temp,
     env,
     encoding: "utf8",

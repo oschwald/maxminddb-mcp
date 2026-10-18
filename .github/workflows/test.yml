@@ -43,7 +43,9 @@ jobs:
         run: npm ci
 
       - name: Test installed extension
-        run: npm run test:extensions
+        env:
+          MAXMINDDB_TEST_CLAUDE_PLUGIN: '1'
+        run: npx --yes --package @anthropic-ai/claude-code@2.1.302 -c 'npm run test:extensions'
 
       - name: Test fixture generator
         if: runner.os == 'Linux'

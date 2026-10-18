@@ -310,6 +310,16 @@ test(
       url: `https://github.com/oschwald/maxminddb-mcp/releases/download/v${manifest.version}/maxminddb-claude-plugin.zip`,
       sha256: createHash("sha256").update(claudeArchive).digest("hex"),
     });
+    if (process.env.MAXMINDDB_TEST_CLAUDE_PLUGIN === "1") {
+      execFileSync(
+        process.execPath,
+        [
+          "scripts/test-claude-plugin.mjs",
+          join(dist, "maxminddb-claude-plugin.zip"),
+        ],
+        { stdio: "pipe", timeout: 45000 }
+      );
+    }
     assert.deepEqual(
       Object.keys(unzipSync(await readFile(universalBundle)))
         .filter(path => path.startsWith("server/"))
