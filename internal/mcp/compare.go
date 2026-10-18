@@ -29,7 +29,7 @@ type databaseChange struct {
 type comparisonResult struct {
 	ResumeToken     string           `json:"resume_token"`
 	Changes         []databaseChange `json:"changes"`
-	ScannedSegments int              `json:"scanned_segments"`
+	ScannedSegments int              `json:"scanned_segments" jsonschema:"Address segments examined on this page, including unchanged segments. Not cumulative across pages."`
 	HasMore         bool             `json:"has_more"`
 }
 

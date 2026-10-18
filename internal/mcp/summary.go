@@ -20,20 +20,20 @@ import (
 
 type summaryGroup struct {
 	Value     any    `json:"value"`
-	Addresses string `json:"addresses"`
-	Records   int    `json:"records"`
-	Missing   bool   `json:"missing"`
+	Addresses string `json:"addresses" jsonschema:"Addresses covered by this group inside the requested CIDR. A decimal integer string preserves IPv6 precision."`
+	Records   int    `json:"records"   jsonschema:"Matching stored network records in this group, not individual IP addresses."`
+	Missing   bool   `json:"missing"   jsonschema:"True when the group_by field is absent. Distinguishes a missing field from a field containing null."`
 }
 
 type summaryResult struct {
 	Database         string         `json:"database"`
 	Network          string         `json:"network"`
 	GroupBy          string         `json:"group_by"`
-	TotalAddresses   string         `json:"total_addresses"`
-	MatchedAddresses string         `json:"matched_addresses"`
+	TotalAddresses   string         `json:"total_addresses"   jsonschema:"Number of addresses in the requested CIDR, including uncovered addresses. A decimal integer string preserves IPv6 precision."`
+	MatchedAddresses string         `json:"matched_addresses" jsonschema:"Addresses covered by matching records inside the CIDR, excluding IPv4 aliases. A decimal integer string preserves IPv6 precision."`
 	Groups           []summaryGroup `json:"groups"`
-	ScannedRecords   int            `json:"scanned_records"`
-	MatchedRecords   int            `json:"matched_records"`
+	ScannedRecords   int            `json:"scanned_records"   jsonschema:"Stored network records examined before filtering, not individual IP addresses."`
+	MatchedRecords   int            `json:"matched_records"   jsonschema:"Stored network records passing the filters. Equals the sum of group record counts."`
 }
 
 func (s *Server) registerSummaryTool() {

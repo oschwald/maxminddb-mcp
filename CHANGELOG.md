@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Direct missing-database and database-selection errors to `list_databases` for exact filenames, download status, and setup instructions.
+- Describe pagination counters, exact address counts, database metadata, and sampling limits in MCP output schemas.
 
 ## [0.3.1] - 2026-10-17
 
