@@ -1,6 +1,6 @@
 {
   "name": "maxminddb",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Look up IP locations and network ownership in local MaxMind databases.",
   "mcpServers": {
     "maxminddb": {
@@ -23,7 +23,7 @@
         "MAXMINDDB_MCP_LICENSE_KEY",
         "--env",
         "MAXMINDDB_MCP_EDITIONS",
-        "ghcr.io/oschwald/maxminddb-mcp:0.3.1"
+        "ghcr.io/oschwald/maxminddb-mcp:0.4.0"
       ],
       "env": {
         "MAXMINDDB_MCP_ACCOUNT_ID": "${MAXMINDDB_MCP_ACCOUNT_ID}",

@@ -8,7 +8,7 @@
   "homepage": "https://github.com/oschwald/maxminddb-mcp",
   "license": "ISC",
   "keywords": ["geoip", "maxmind", "mmdb", "ip", "asn"],
-  "version": "0.3.1",
+  "version": "0.4.0",
   "repository": "https://github.com/oschwald/maxminddb-mcp",
   "skills": "./packaging/skills/",
   "logo": "packaging/icon.png",
@@ -55,7 +55,7 @@
         "MAXMINDDB_MCP_LICENSE_KEY",
         "--env",
         "MAXMINDDB_MCP_EDITIONS",
-        "ghcr.io/oschwald/maxminddb-mcp:0.3.1"
+        "ghcr.io/oschwald/maxminddb-mcp:0.4.0"
       ],
       "env": {
         "MAXMINDDB_MCP_ACCOUNT_ID": "${MAXMINDDB_MCP_ACCOUNT_ID}",
