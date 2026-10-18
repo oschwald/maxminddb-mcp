@@ -127,6 +127,30 @@ See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend
 
 ## Claude Code
 
+Install the native plugin and its setup and IP investigation skills:
+
+```bash
+claude plugin marketplace add https://github.com/oschwald/maxminddb-mcp/releases/latest/download/claude-marketplace.json
+claude plugin install maxminddb@maxminddb
+```
+
+In a Claude Code terminal session, open **/plugin → Installed → MaxMindDB → Configure** and configure the bundled MCP server. Choose MaxMind downloads with your account ID and license key, or turn downloads off and select an existing MMDB folder. Restart Claude Code, then run `/maxminddb:setup`. No Docker, Go, or separate server installation is required. The universal package selects the native executable for macOS and Linux on AMD64 or ARM64, or Windows on AMD64.
+
+The bundle has its own settings form. `claude plugin configure` edits top-level plugin options and does not configure this bundled server. For an existing folder, Claude Code 2.1.285 or later also supports:
+
+```bash
+claude plugin install maxminddb@maxminddb \
+  --config maxminddb.download_enabled=false \
+  --config maxminddb.database_dir=/absolute/path/to/databases
+```
+
+The marketplace link follows the latest stable release. Each catalog pins the ZIP to a release URL and SHA-256. In **/plugin → Marketplaces → maxminddb**, enable auto-update, or update manually with `claude plugin marketplace update maxminddb` followed by `claude plugin update maxminddb@maxminddb`. Restart Claude Code after an update. Database files stay outside the plugin.
+
+If you registered `oschwald/maxminddb-mcp` previously, that marketplace now installs the same universal ZIP. After updating from the Docker plugin, configure the bundled server again. Existing credentials were stored as top-level plugin options and do not transfer to the bundle form. The old `maxminddb-mcp-data` Docker volume remains in place. The native plugin downloads into the application cache by default, or you can select a folder containing exported MMDB files.
+
+<details>
+<summary>Use an installed executable without plugin skills</summary>
+
 After installing the executable on PATH and configuring it in a default location:
 
 ```bash
@@ -144,21 +168,20 @@ claude mcp add --scope user \
 
 See the [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 
-For a repository plugin backed by Docker, install from this marketplace in Claude Code:
-
-```text
-/plugin install maxminddb --marketplace oschwald/maxminddb-mcp
-```
-
-This requires a running Docker engine. Enter your account ID, license key, and edition IDs in the plugin settings. The repository plugin downloads databases into the `maxminddb-mcp-data` Docker volume. Use the native MCPB or release plugin to select an existing MMDB folder.
+</details>
 
 ## Claude Cowork plugin (experimental)
 
-Releases also include a `_claude-plugin.zip` for each extension platform. It contains the same executable and settings as the MCPB. In Cowork, open **Customize → Plugins** and upload the matching ZIP as a custom plugin. Configure its settings before using the tools.
+Download [maxminddb-claude-plugin.zip](https://github.com/oschwald/maxminddb-mcp/releases/latest/download/maxminddb-claude-plugin.zip), which contains the universal MCPB and plugin skills. In Cowork, open **Customize → Plugins** and upload it as a custom plugin. It contains all five native builds, so there is no platform-specific download to select. Configure the bundled server before using the tools.
 
-The plugin includes a `setup` skill to check database status and perform a sample IP lookup. Ask it to check your MaxMindDB setup. In Claude Code, invoke `/maxminddb:setup`. The skill directs credential entry to client settings. It does not collect keys in chat. The MCPB extension does not register plugin skills by itself.
+The plugin includes two skills:
 
-This package follows Claude's plugin format, but Cowork installation and its settings UI still need manual validation. Use the MCPB for Claude Desktop chat. A local MCP plugin does not provide tools to Claude web or mobile. See [Claude's plugin documentation](https://support.claude.com/en/articles/13837440-use-plugins-in-claude).
+- **Setup:** Check database status and perform a sample IP lookup. Ask it to check your MaxMindDB setup, or invoke `/maxminddb:setup` in Claude Code. Credentials belong in client settings.
+- **Investigate IPs:** Summarize a supplied IP list or log excerpt by country and ASN. Ask, “Summarize these addresses by country and network owner, including any that have no record,” or invoke `/maxminddb:investigate-ips` in Claude Code. The skill distinguishes unique addresses from event counts and reports database age and lookup coverage.
+
+The MCPB extension alone does not register plugin skills. To upgrade an uploaded plugin, upload the newer ZIP with the same plugin name. Existing platform-specific `_claude-plugin.zip` assets remain available.
+
+Claude Code installation and bundle settings are tested automatically. Cowork installation and its bundled-server settings UI still need manual validation. If Cowork does not offer configuration, use the [MCPB extension in Claude Desktop chat](#claude-desktop). A local MCP plugin does not provide tools to Claude web or mobile. See [Claude's plugin documentation](https://support.claude.com/en/articles/13837440-use-plugins-in-claude).
 
 ## Antigravity CLI (`agy`)
 

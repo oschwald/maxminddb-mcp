@@ -209,6 +209,11 @@ release:
     Enter your MaxMind account settings, or turn off downloads and choose a folder of MMDB files.
     No terminal, Go installation, or config file is required.
 
+    **Claude plugin:** Download `maxminddb-claude-plugin.zip` for the universal
+    bundle and setup and IP investigation skills. Follow the
+    [Claude client guide](https://github.com/oschwald/maxminddb-mcp/blob/main/docs/clients.md#claude-code)
+    for marketplace installation and settings.
+
     **Standalone:** Download an archive or Linux package for your platform.
     See the [installation guide](https://github.com/oschwald/maxminddb-mcp#installation)
     for ChatGPT desktop, Codex, Claude Code, and experimental desktop plugins.

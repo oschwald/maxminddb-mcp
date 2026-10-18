@@ -57,7 +57,7 @@ jobs:
         env:
           HOMEBREW_TAP_TOKEN: ''
 
-      - name: Package universal MCPB
+      - name: Package universal MCPB and Claude plugin
         run: node scripts/package-universal-extension.mjs "$(jq -r .version dist/metadata.json)" dist
 
       - name: Validate registry metadata
@@ -65,6 +65,10 @@ jobs:
 
       - name: Validate Claude plugins
         run: |
-          npx --yes @anthropic-ai/claude-code@2.1.302 plugin validate .claude-plugin/plugin.json
           npx --yes @anthropic-ai/claude-code@2.1.302 plugin validate --strict .claude-plugin/marketplace.json
           npx --yes @anthropic-ai/claude-code@2.1.302 plugin validate --strict dist/extensions/linux_amd64
+          npx --yes @anthropic-ai/claude-code@2.1.302 plugin validate --strict dist/universal-claude-plugin
+          npx --yes @anthropic-ai/claude-code@2.1.302 plugin validate --strict dist/claude-marketplace.json
+
+      - name: Test Claude plugin installation and settings
+        run: npx --yes --package @anthropic-ai/claude-code@2.1.302 -c 'node scripts/test-claude-plugin.mjs dist/maxminddb-claude-plugin.zip'

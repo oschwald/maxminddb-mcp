@@ -79,6 +79,10 @@ test(
       plugin.mcpServers.maxminddb.env,
       manifest.server.mcp_config.env
     );
+    assert.deepEqual(
+      await readFile(join(installed, "skills/investigate-ips/SKILL.md")),
+      await readFile("packaging/skills/investigate-ips/SKILL.md")
+    );
 
     const databases = join(temp, "MMDB files");
     await mkdir(databases);
@@ -191,6 +195,10 @@ test(
     const gemini = JSON.parse(
       await readFile(join(geminiInstalled, "gemini-extension.json"), "utf8")
     );
+    assert.deepEqual(
+      await readFile(join(geminiInstalled, "skills/investigate-ips/SKILL.md")),
+      await readFile("packaging/skills/investigate-ips/SKILL.md")
+    );
     assert.equal(gemini.version, manifest.version);
     assert.equal(
       gemini.settings.find(
@@ -251,20 +259,67 @@ test(
     const universalBundle = join(dist, "maxminddb.mcpb");
     await writeFile(
       join(dist, "checksums.txt"),
-      "existing-checksum  other.zip\nstale-checksum  maxminddb.mcpb\n"
+      "existing-checksum  other.zip\nstale-checksum  maxminddb.mcpb\nstale-checksum  maxminddb-claude-plugin.zip\nstale-checksum  claude-marketplace.json\n"
     );
     execFileSync(
       process.execPath,
       ["scripts/package-universal-extension.mjs", manifest.version, dist],
       { stdio: "pipe" }
     );
-    const checksum = createHash("sha256")
-      .update(await readFile(universalBundle))
-      .digest("hex");
+    const expectedChecksums = ["existing-checksum  other.zip"];
+    for (const file of [
+      "maxminddb.mcpb",
+      "maxminddb-claude-plugin.zip",
+      "claude-marketplace.json",
+    ]) {
+      const checksum = createHash("sha256")
+        .update(await readFile(join(dist, file)))
+        .digest("hex");
+      expectedChecksums.push(`${checksum}  ${file}`);
+    }
     assert.equal(
       await readFile(join(dist, "checksums.txt"), "utf8"),
-      `existing-checksum  other.zip\n${checksum}  maxminddb.mcpb\n`
+      expectedChecksums.join("\n") + "\n"
     );
+    const claudeArchive = await readFile(
+      join(dist, "maxminddb-claude-plugin.zip")
+    );
+    const claudeEntries = unzipSync(claudeArchive);
+    assert.deepEqual(
+      Buffer.from(claudeEntries["maxminddb.mcpb"]),
+      await readFile(universalBundle)
+    );
+    const universalPlugin = JSON.parse(
+      Buffer.from(claudeEntries[".claude-plugin/plugin.json"]).toString()
+    );
+    assert.equal(universalPlugin.version, manifest.version);
+    assert.equal(universalPlugin.mcpServers, "./maxminddb.mcpb");
+    assert.equal(universalPlugin.userConfig, undefined);
+    for (const name of ["setup", "investigate-ips"]) {
+      assert.deepEqual(
+        Buffer.from(claudeEntries[`skills/${name}/SKILL.md`]),
+        await readFile(`packaging/skills/${name}/SKILL.md`)
+      );
+    }
+    const claudeMarketplace = JSON.parse(
+      await readFile(join(dist, "claude-marketplace.json"), "utf8")
+    );
+    assert.equal(claudeMarketplace.plugins[0].name, universalPlugin.name);
+    assert.deepEqual(claudeMarketplace.plugins[0].source, {
+      source: "archive",
+      url: `https://github.com/oschwald/maxminddb-mcp/releases/download/v${manifest.version}/maxminddb-claude-plugin.zip`,
+      sha256: createHash("sha256").update(claudeArchive).digest("hex"),
+    });
+    if (process.env.MAXMINDDB_TEST_CLAUDE_PLUGIN === "1") {
+      execFileSync(
+        process.execPath,
+        [
+          "scripts/test-claude-plugin.mjs",
+          join(dist, "maxminddb-claude-plugin.zip"),
+        ],
+        { stdio: "pipe", timeout: 45000 }
+      );
+    }
     assert.deepEqual(
       Object.keys(unzipSync(await readFile(universalBundle)))
         .filter(path => path.startsWith("server/"))
@@ -333,6 +388,7 @@ test(
         "icon.png",
         executable,
         "skills/setup/SKILL.md",
+        "skills/investigate-ips/SKILL.md",
       ].sort()
     );
     const openaiInstalled = join(temp, "installed OpenAI plugin");

@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Include an IP investigation skill in plugins to summarize IP lists and logs by country and ASN, with lookup coverage and database limitations.
+- Publish one universal Claude plugin ZIP and a release marketplace catalog with a pinned archive checksum. Test installation and bundled-server settings with Claude Code in CI.
+
 ### Changed
 
+- Replace the Claude marketplace's Docker plugin with the universal native package. Users of the Docker plugin must configure the bundled server again. Existing Docker databases remain in their volume.
 - Direct missing-database and database-selection errors to `list_databases` for exact filenames, download status, and setup instructions.
 - Describe pagination counters, exact address counts, database metadata, and sampling limits in MCP output schemas.
 - Clarify validation, filename conflicts, and MaxMind update behavior when installing databases from URLs.

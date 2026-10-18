@@ -75,14 +75,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      - name: Package and publish universal MCPB
+      - name: Package and publish universal MCPB and Claude plugin
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           version="${RELEASE_TAG#v}"
           node scripts/package-universal-extension.mjs "$version" dist
-          gh release upload "$RELEASE_TAG" dist/maxminddb.mcpb dist/checksums.txt --clobber
+          gh release upload "$RELEASE_TAG" dist/maxminddb.mcpb dist/maxminddb-claude-plugin.zip dist/claude-marketplace.json dist/checksums.txt --clobber
 
   registry:
     name: Publish to MCP Registry

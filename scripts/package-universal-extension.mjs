@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { packExtension } from "@anthropic-ai/mcpb";
+import { getAllFilesWithCount, packExtension } from "@anthropic-ai/mcpb";
+import { zipSync } from "fflate";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const extensionTargets = [
@@ -74,6 +75,65 @@ export async function packageUniversalExtension(version, dist) {
   ) {
     throw new Error("Failed to package the universal extension");
   }
+
+  const pluginStage = join(dist, "universal-claude-plugin");
+  await rm(pluginStage, { recursive: true, force: true });
+  await mkdir(join(pluginStage, ".claude-plugin"), { recursive: true });
+  await copyFile(bundle, join(pluginStage, "maxminddb.mcpb"));
+  for (const file of ["LICENSE", "README.md", "icon.png"]) {
+    await copyFile(join(stage, file), join(pluginStage, file));
+  }
+  await cp(join(root, "packaging/skills"), join(pluginStage, "skills"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(pluginStage, ".claude-plugin/plugin.json"),
+    JSON.stringify(
+      {
+        name: manifest.name,
+        displayName: manifest.display_name,
+        version,
+        description: manifest.description,
+        author: manifest.author,
+        homepage: manifest.homepage,
+        repository: manifest.repository.url,
+        license: manifest.license,
+        icon: "./icon.png",
+        // MCPB settings use their own form, separate from plugin userConfig.
+        mcpServers: "./maxminddb.mcpb",
+      },
+      null,
+      2
+    ) + "\n"
+  );
+  const { files } = getAllFilesWithCount(pluginStage);
+  const zipFiles = Object.fromEntries(
+    Object.entries(files).map(([path, file]) => [
+      path,
+      [file.data, { os: 3, attrs: (file.mode & 0o777) << 16 }],
+    ])
+  );
+  // The MCPB file collector excludes bundles, so include this one explicitly.
+  zipFiles["maxminddb.mcpb"] = [
+    await readFile(bundle),
+    { os: 3, attrs: 0o644 << 16, level: 0 },
+  ];
+  const pluginArchive = zipSync(zipFiles, { level: 9 });
+  const pluginFilename = "maxminddb-claude-plugin.zip";
+  await writeFile(join(dist, pluginFilename), pluginArchive);
+
+  const marketplace = JSON.parse(
+    await readFile(join(root, ".claude-plugin/marketplace.json"), "utf8")
+  );
+  marketplace.plugins[0].source = {
+    source: "archive",
+    url: `https://github.com/oschwald/maxminddb-mcp/releases/download/v${version}/${pluginFilename}`,
+    sha256: createHash("sha256").update(pluginArchive).digest("hex"),
+  };
+  await writeFile(
+    join(dist, "claude-marketplace.json"),
+    JSON.stringify(marketplace, null, 2) + "\n"
+  );
   return bundle;
 }
 
@@ -86,12 +146,21 @@ if (import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   }
   const bundle = await packageUniversalExtension(version, dist);
   const checksumFile = join(dist, "checksums.txt");
+  const artifacts = [
+    basename(bundle),
+    "maxminddb-claude-plugin.zip",
+    "claude-marketplace.json",
+  ];
   const checksums = (await readFile(checksumFile, "utf8"))
     .split("\n")
-    .filter(line => line && !line.endsWith(`  ${basename(bundle)}`));
-  const checksum = createHash("sha256")
-    .update(await readFile(bundle))
-    .digest("hex");
-  checksums.push(`${checksum}  ${basename(bundle)}`);
+    .filter(
+      line => line && !artifacts.some(file => line.endsWith(`  ${file}`))
+    );
+  for (const file of artifacts) {
+    const checksum = createHash("sha256")
+      .update(await readFile(join(dist, file)))
+      .digest("hex");
+    checksums.push(`${checksum}  ${file}`);
+  }
   await writeFile(checksumFile, checksums.join("\n") + "\n");
 }
