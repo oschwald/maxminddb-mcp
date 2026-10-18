@@ -13,7 +13,7 @@ func (s *Server) registerInstallTools() {
 		"install_database",
 		mcp.WithToolTitle("Install a database from a URL"),
 		mcp.WithDescription(
-			"Download and load a database from an HTTP or HTTPS URL. Accepts MMDB, gzip, tar, tar.gz, or ZIP with exactly one MMDB. Downloads and expanded data are limited to 1 GiB. Uses the configured download folder, or the first folder in directory mode. Does not use MaxMind credentials or save the URL for updates.",
+			"Download, validate, and load a database from an HTTP or HTTPS URL. Use install_edition, when available, for MaxMind editions with managed updates. Accepts MMDB, gzip, tar, tar.gz, or ZIP with exactly one MMDB. Downloads and expanded data are limited to 1 GiB. Uses the configured download folder, or the first folder in directory mode. Existing files require overwrite: true and are replaced only after validation. Does not use MaxMind credentials or save the URL for updates.",
 		),
 		mcp.WithReadOnlyHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(true),
@@ -29,7 +29,9 @@ func (s *Server) registerInstallTools() {
 		mcp.WithString(
 			"database",
 			mcp.Required(),
-			mcp.Description("Destination filename ending in .mmdb, without a directory path."),
+			mcp.Description(
+				"Destination filename ending in .mmdb, without a directory path. A name loaded from another folder is rejected, even with overwrite. MaxMind updates can replace imports named after configured or API-installed editions.",
+			),
 		),
 		mcp.WithBoolean(
 			"overwrite",
@@ -42,7 +44,7 @@ func (s *Server) registerInstallTools() {
 			"install_edition",
 			mcp.WithToolTitle("Install a MaxMind edition"),
 			mcp.WithDescription(
-				"Download a MaxMind MMDB edition using configured credentials, load it immediately, and remember it for future updates. The edition need not be in the server configuration. Replaces an existing file for that edition.",
+				"Download a MaxMind MMDB edition using configured credentials, load it immediately, and remember it for future updates. The edition need not be in the server configuration. Replaces an existing file for that edition after validation. Use install_database for a one-time import from a URL.",
 			),
 			mcp.WithReadOnlyHintAnnotation(false),
 			mcp.WithDestructiveHintAnnotation(true),
