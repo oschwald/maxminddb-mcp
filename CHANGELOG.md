@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-18
+
 ### Added
 
 - Include an IP investigation skill in plugins to summarize IP lists and logs by country and ASN, with lookup coverage and database limitations.
@@ -169,7 +171,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Safe Resource Handling**: Proper cleanup and resource lifecycle management
 - **File Permission Awareness**: Handles permission errors gracefully
 
-[Unreleased]: https://github.com/oschwald/maxminddb-mcp/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/oschwald/maxminddb-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/oschwald/maxminddb-mcp/releases/tag/v0.4.0
 [0.3.1]: https://github.com/oschwald/maxminddb-mcp/releases/tag/v0.3.1
 [0.3.0]: https://github.com/oschwald/maxminddb-mcp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/oschwald/maxminddb-mcp/releases/tag/v0.2.0
