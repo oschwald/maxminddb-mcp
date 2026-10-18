@@ -20,8 +20,8 @@ npm run test:extensions
 - Preserve reviewed commits. Make follow-up changes in new atomic commits.
 - Keep credentials out of commits and logs. Config examples must use placeholders.
 - Extension settings use the environment configuration source. Do not silently merge them with discovered TOML or GeoIP.conf files.
-- Keep downloaded databases outside the extension directory. Package only staged binaries, manifests, documentation, the setup skill, and the icon.
-- Share `packaging/skills/setup/SKILL.md` across Claude and OpenAI plugins. OpenAI packages use config discovery and must not contain Claude's settings placeholders.
+- Keep downloaded databases outside the extension directory. Package only staged binaries, manifests, documentation, the shared skills, and the icon.
+- Share `packaging/skills/` across plugin packages. The universal Claude plugin wraps the universal MCPB and uses its bundled-server settings form. OpenAI packages use config discovery and must not contain Claude's settings placeholders.
 - Changes to packaging must pass the extracted-bundle smoke test. Follow CONTRIBUTING.md for release automation and manual Desktop checks.
 - Send progress only for an active request with a valid progress token. Keep callbacks synchronous, throttle notifications, and omit unknown totals.
 - Stdout is for MCP messages. Use `log/slog` on stderr for application logs.

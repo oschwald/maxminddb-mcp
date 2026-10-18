@@ -68,7 +68,7 @@ go run ../internal/mcp/testdata/generate.go ../internal/mcp/testdata
 
 Tests use bundled MMDB fixtures and local HTTP servers. They do not require a MaxMind account or databases in your home directory. Add regression tests for pagination, filters, config loading, and download failures when changing those paths. Prefer assertions about returned data over tests that only check for a non-nil result. Aim for at least 80% coverage in changed packages, while prioritizing meaningful cases.
 
-CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. On each OS, the extension test builds, packs, and extracts native MCPB and OpenAI plugin packages. It applies Claude settings through the MCPB resolver and checks OpenAI config discovery in an isolated home directory. Both packages must perform an IP lookup over stdio. The test also checks external database retention, shared skill contents, and credential-safe configuration errors. Fixture generator tests and vulnerability checks run on Linux.
+CI runs the server tests with the race detector on Linux, Windows, and macOS. These include file-watcher replacement and removal, retained readers, and stdio shutdown. On each OS, the extension test builds, packs, and extracts native MCPB and OpenAI plugin packages. It applies Claude settings through the MCPB resolver and checks OpenAI config discovery in an isolated home directory. Both packages must perform an IP lookup over stdio. The universal Claude plugin contains the same MCPB and shared skills. The packaging CI also installs it with Claude Code in an isolated home directory, checks connection and settings, replaces the package, and rejects invalid credentials without exposing the key. The test also checks external database retention, shared skill contents, and credential-safe configuration errors. Fixture generator tests and vulnerability checks run on Linux.
 
 The stdio tests cover legacy initialization for `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`, plus discovery and direct requests for `2026-07-28`. They check response identity and metadata, result types, invalid metadata, unsupported versions, progress, and cancellation reaching active downloads. Protocol negotiation and transport behavior come from `mcp-go`. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28).
 
@@ -102,6 +102,7 @@ GoReleaser uses `dockers_v2` and Docker Buildx to build the multi-platform image
 ```bash
 HOMEBREW_TAP_TOKEN='' mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
 node scripts/package-universal-extension.mjs "$(jq -r .version dist/metadata.json)" dist
+npx --yes --package @anthropic-ai/claude-code@2.1.302 -c 'node scripts/test-claude-plugin.mjs dist/maxminddb-claude-plugin.zip'
 ```
 
 Building ARM64 images on an AMD64 host requires an ARM64 builder or QEMU emulation. To check binary packaging without images, add `--skip=docker`. See [GoReleaser's Docker documentation](https://goreleaser.com/customization/package/dockers_v2/).
@@ -112,15 +113,17 @@ Release CI runs only on version tags. Local build and config checks do not publi
 
 Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, Gemini extensions, and experimental Claude and OpenAI plugin ZIPs. It publishes the files and their SHA-256 checksums to GitHub Releases. Packaging uses the pinned `@anthropic-ai/mcpb` and `fflate` development dependencies. Node.js is not included in the extensions and is not needed to run the server.
 
-Each OS and architecture gets its own extension. After GoReleaser finishes, CI assembles all five native builds into `maxminddb.mcpb`, adds its checksum, and uploads both files. The fixed asset name supports the README's latest-release link. A shell launcher selects the macOS or Linux executable. The manifest's Windows override launches the `.exe` directly. No additional runtime is required. The smaller platform-specific MCPBs remain available.
+Each OS and architecture gets its own extension. After GoReleaser finishes, CI assembles all five native builds into `maxminddb.mcpb` and wraps it with the shared skills in `maxminddb-claude-plugin.zip`. It also generates `claude-marketplace.json`, which pins that ZIP to the release URL and SHA-256. CI adds all three assets to `checksums.txt` and uploads them. The fixed asset name supports the README's latest-release link. A shell launcher selects the macOS or Linux executable. The manifest's Windows override launches the `.exe` directly. No additional runtime is required. The smaller platform-specific MCPBs remain available.
 
 After a stable release succeeds, CI updates the version in `server.json` and publishes to the MCP Registry as `io.github.oschwald/maxminddb`. Authentication uses GitHub Actions OIDC with `id-token: write`, so no registry token is stored. The registry entry uses the existing multi-architecture OCI image and a named Docker volume for downloaded databases. It requires Docker and MaxMind credentials. Native MCPB downloads remain available on GitHub.
 
-Repository manifests for Claude, Cursor, and legacy Gemini CLI use a pinned container image. When updating that pin, use a published image and bump the manifest versions so clients detect the update. Gemini release ZIPs replace the Docker command with a bundled executable and use the release version. Their platform prefixes follow [Gemini's release asset rules](https://geminicli.com/docs/extensions/releasing/).
+The Claude repository marketplace points to the latest universal plugin ZIP. The release catalog pins an exact version and checksum. The plugin references its bundled MCPB, whose settings form is separate from top-level plugin `userConfig`. Do not duplicate those settings in the universal plugin manifest.
+
+Repository manifests for Cursor and legacy Gemini CLI use a pinned container image. When updating that pin, use a published image and bump the manifest versions so clients detect the update. Gemini release ZIPs replace the Docker command with a bundled executable and use the release version. Their platform prefixes follow [Gemini's release asset rules](https://geminicli.com/docs/extensions/releasing/).
 
 Antigravity CLI is the primary Google integration. Its `.antigravity-plugin/plugin.json` manifest and root `mcp_config.json` launch the installed executable using existing config discovery. Validate the repository plugin with `agy plugin validate . --strict` on Antigravity CLI 1.4.0 or later. Gemini's credential settings do not survive Antigravity's legacy import, so do not advertise the Gemini ZIP as an Antigravity package.
 
-The Claude and Cursor manifests support directory submissions. `glama.json` identifies the GitHub maintainer for ownership verification. These files do not approve or claim a listing. Submit them through each directory's account workflow after merging. The shorter plugin identifiers replace `maxminddb-mcp`; users of older bundles must reinstall and configure the new plugin. The old MCP Registry entry remains separate from the new name.
+The generated Claude plugin and repository Cursor manifests support directory submissions. `glama.json` identifies the GitHub maintainer for ownership verification. These files do not approve or claim a listing. Submit them through each directory's account workflow after merging. The shorter plugin identifiers replace `maxminddb-mcp`; users of older bundles must reinstall and configure the new plugin. The old MCP Registry entry remains separate from the new name.
 
 Prerelease tags publish GitHub assets but skip the registry and Homebrew. Validate registry metadata without publishing:
 
@@ -138,7 +141,7 @@ The tap is populated by stable releases.
 
 Anthropic's extension directory is a separate submission and review process. CI publishes downloadable bundles, not an approved directory listing. These bundles are unsigned. Verify the downloaded bundle's execution and any OS security prompts on a clean desktop before submitting it. Directory approval or publisher certificates cannot be created by this repository's release workflow.
 
-OpenAI packages are staged in `dist/openai-plugins/PLATFORM_ARCH`. Each package uses the supported `.codex-plugin/plugin.json` compatibility manifest and root `.mcp.json`, with `${PLUGIN_ROOT}` for the executable path. A local marketplace catalog points to that package. The setup skill comes from `packaging/skills/setup/SKILL.md` and is also included in the Claude plugin. OpenAI's `onboardingSkill` points to this file. Keep Claude settings placeholders out of OpenAI manifests. The OpenAI package uses the server's existing config discovery.
+OpenAI packages are staged in `dist/openai-plugins/PLATFORM_ARCH`. Each package uses the supported `.codex-plugin/plugin.json` compatibility manifest and root `.mcp.json`, with `${PLUGIN_ROOT}` for the executable path. A local marketplace catalog points to that package. All plugin packages share `packaging/skills/`, including `setup` and `investigate-ips`. The setup skill comes from `packaging/skills/setup/SKILL.md`. OpenAI's `onboardingSkill` points to this file. Keep Claude settings placeholders out of OpenAI manifests. The OpenAI package uses the server's existing config discovery.
 
 The compatibility layout exposes both the MCP server and skill to Codex 0.163.0. Its loader recognized the skill but omitted the MCP server with the portable `plugin.json` and `mcp.json` layout. Recheck the loader before changing formats.
 
@@ -152,9 +155,9 @@ Automated package tests do not exercise Claude Desktop's UI. Before marking Desk
 2. Enter MaxMind credentials and confirm an initial download, a successful lookup, and a useful error for invalid credentials.
 3. Turn downloads off and select existing MMDB files. Check paths with spaces and a folder that cannot be written.
 4. Change settings, restart the extension, and install an upgrade. Confirm that settings and external databases remain available.
-5. For the experimental plugin, upload the ZIP in Cowork and verify that its settings UI and local MCP process work. Do not infer Cowork support from a Desktop chat test.
+5. Upload `maxminddb-claude-plugin.zip` in Cowork and verify that Configure exposes the bundled MCPB settings. Check both download and existing-folder modes, settings retention after restart and replacement, and the setup and IP investigation skills. Do not infer Cowork support from a Desktop chat or Claude Code test.
 
-For a generated plugin's schema, run `claude plugin validate --strict dist/extensions/PLATFORM_ARCH` with Claude Code 2.1.302 or later. The plugin and MCPB use the same executable and settings definitions. The extension defaults to an OS cache directory outside the installation folder. Users who need a different storage location can choose a database folder.
+Validate the universal plugin with `claude plugin validate --strict dist/universal-claude-plugin` and the release catalog with `claude plugin validate --strict dist/claude-marketplace.json`, using Claude Code 2.1.302 or later. Platform-specific plugins remain in `dist/extensions/PLATFORM_ARCH`. The plugin and MCPB use the same executable and settings definitions. The extension defaults to an OS cache directory outside the installation folder. Users who need a different storage location can choose a database folder.
 
 For ChatGPT desktop, test both a direct stdio entry and the extracted OpenAI plugin through its local marketplace. Use existing TOML and GeoIP.conf configurations, including paths with spaces. Check missing configuration, empty databases, an initial download, and an update failure. Run setup in both a new conversation and a conversation where the plugin was just installed. Verify the setup skill is offered, tools work, and the skill does not request secrets. Uninstall, replace the package, and reinstall to check upgrades. The automated test launches the declared command but does not emulate ChatGPT's plugin loader or settings UI.
 
@@ -170,7 +173,7 @@ For ChatGPT desktop, test both a direct stdio entry and the extracted OpenAI plu
 | `internal/mcp`      | Tool schemas, handlers, protocol tests              |
 | `test`              | Integration and performance tests                   |
 | `testdata`          | Upstream fixture submodule and generator            |
-| `packaging`         | Desktop extension manifest, icon, and setup skill   |
+| `packaging`         | Desktop extension manifest, icon, and plugin skills |
 | `scripts`           | Extension and plugin packaging and smoke tests      |
 
 Use `golangci-lint fmt` for Go formatting and `npm run format` for Markdown. The lint configuration enables an explicit set of checks. Use `MaxMind`, `GeoIP`, and `MMDB` in prose. JSON and TOML field names use `snake_case`.

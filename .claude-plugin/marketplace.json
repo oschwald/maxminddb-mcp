@@ -9,7 +9,10 @@
   "plugins": [
     {
       "name": "maxminddb",
-      "source": "./",
+      "source": {
+        "source": "archive",
+        "url": "https://github.com/oschwald/maxminddb-mcp/releases/latest/download/maxminddb-claude-plugin.zip"
+      },
       "description": "Look up IP locations and network ownership in local MaxMind databases."
     }
   ]

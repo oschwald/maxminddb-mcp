@@ -34,10 +34,13 @@ Checking setup does not require installing or updating a database through a tool
 
 ## Client configuration
 
-- **Claude:** Direct the user to the plugin's settings for the account ID, license
-  key, and editions. Native release plugins also offer an existing database
-  folder. The repository plugin uses Docker and supports downloads only.
-  MCPB extension settings are a separate installation.
+- **Claude:** For the universal plugin, direct the user to
+  /plugin → Installed → MaxMindDB → Configure in Claude Code to configure the
+  bundled MCP server. Its settings support downloads or an existing database
+  folder. The shell command `claude plugin configure` does not edit bundled
+  MCPB settings. If Cowork does not offer configuration, use the MCPB extension
+  in Claude Desktop chat. Platform-specific release plugins use top-level
+  plugin settings. MCPB extension settings are a separate installation.
 - **ChatGPT and Antigravity:** These plugins use existing server configuration.
   The Antigravity repository plugin also requires `maxminddb-mcp` on PATH.
   If `MAXMINDDB_MCP_CONFIG` is set, the executable uses that file. Otherwise it checks

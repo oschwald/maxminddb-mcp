@@ -204,6 +204,11 @@ release:
     ### Installation
 
     **Claude Desktop:** Download `maxminddb.mcpb`.
+
+    **Claude plugin:** Download `maxminddb-claude-plugin.zip` for the universal
+    bundle and setup and IP investigation skills. Follow the
+    [Claude client guide](https://github.com/oschwald/maxminddb-mcp/blob/main/docs/clients.md#claude-code)
+    for marketplace installation and settings.
     It includes all supported platforms. Smaller platform-specific MCPBs are also available.
     Open Settings > Extensions > Advanced settings > Install Extension and select the file.
     Enter your MaxMind account settings, or turn off downloads and choose a folder of MMDB files.
