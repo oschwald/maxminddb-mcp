@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getAllFilesWithCount, packExtension } from "@anthropic-ai/mcpb";
@@ -28,11 +28,9 @@ export async function packageExtension(binary, version, goos, goarch, dist) {
     await copyFile(join(root, file), join(stage, file));
   }
   await copyFile(join(root, "packaging/icon.png"), join(stage, "icon.png"));
-  await mkdir(join(stage, "skills/setup"), { recursive: true });
-  await copyFile(
-    join(root, "packaging/skills/setup/SKILL.md"),
-    join(stage, "skills/setup/SKILL.md")
-  );
+  await cp(join(root, "packaging/skills"), join(stage, "skills"), {
+    recursive: true,
+  });
 
   const manifest = JSON.parse(
     await readFile(join(root, "packaging/manifest.json"), "utf8")
@@ -149,11 +147,9 @@ export async function packageExtension(binary, version, goos, goarch, dist) {
       JSON.stringify(contents, null, 2) + "\n"
     );
   }
-  await mkdir(join(openaiStage, "skills/setup"), { recursive: true });
-  await copyFile(
-    join(stage, "skills/setup/SKILL.md"),
-    join(openaiStage, "skills/setup/SKILL.md")
-  );
+  await cp(join(stage, "skills"), join(openaiStage, "skills"), {
+    recursive: true,
+  });
   const { files } = getAllFilesWithCount(openaiStage);
   const zipFiles = Object.fromEntries(
     Object.entries(files).map(([path, file]) => [
@@ -190,13 +186,11 @@ export async function packageExtension(binary, version, goos, goarch, dist) {
           { os: 3, attrs: 0o644 << 16 },
         ],
         ...Object.fromEntries(
-          [
-            executable,
-            "LICENSE",
-            "README.md",
-            "icon.png",
-            "skills/setup/SKILL.md",
-          ].map(path => [path, zipFiles[path]])
+          Object.entries(zipFiles).filter(
+            ([path]) =>
+              [executable, "LICENSE", "README.md", "icon.png"].includes(path) ||
+              path.startsWith("skills/")
+          )
         ),
       },
       { level: 9 }

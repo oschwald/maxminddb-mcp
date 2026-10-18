@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Include an IP investigation skill in plugins to summarize IP lists and logs by country and ASN, with lookup coverage and database limitations.
+
 ### Changed
 
 - Direct missing-database and database-selection errors to `list_databases` for exact filenames, download status, and setup instructions.

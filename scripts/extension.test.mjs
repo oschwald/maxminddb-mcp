@@ -79,6 +79,10 @@ test(
       plugin.mcpServers.maxminddb.env,
       manifest.server.mcp_config.env
     );
+    assert.deepEqual(
+      await readFile(join(installed, "skills/investigate-ips/SKILL.md")),
+      await readFile("packaging/skills/investigate-ips/SKILL.md")
+    );
 
     const databases = join(temp, "MMDB files");
     await mkdir(databases);
@@ -190,6 +194,10 @@ test(
     );
     const gemini = JSON.parse(
       await readFile(join(geminiInstalled, "gemini-extension.json"), "utf8")
+    );
+    assert.deepEqual(
+      await readFile(join(geminiInstalled, "skills/investigate-ips/SKILL.md")),
+      await readFile("packaging/skills/investigate-ips/SKILL.md")
     );
     assert.equal(gemini.version, manifest.version);
     assert.equal(
@@ -333,6 +341,7 @@ test(
         "icon.png",
         executable,
         "skills/setup/SKILL.md",
+        "skills/investigate-ips/SKILL.md",
       ].sort()
     );
     const openaiInstalled = join(temp, "installed OpenAI plugin");
