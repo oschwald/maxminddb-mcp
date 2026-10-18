@@ -12,10 +12,22 @@ func (s *Server) registerRangeTool() {
 	s.mcp.AddTool(mcp.NewTool("lookup_range", append([]mcp.ToolOption{
 		mcp.WithToolTitle("Query an address range"),
 		mcp.WithDescription(
-			"Query stored network records overlapping an inclusive start/end IP range, with filters, field selection, and pagination. Returns each overlapping network once, not each IP address. Repeat the endpoints on every page.",
+			"Find stored network records overlapping an inclusive start/end IP range, with optional filters and field selection. Use lookup_network when the bounds are a CIDR. Returns each overlapping network once, including networks extending beyond the bounds. Repeat the endpoints and database on each page. Stop when has_more is false.",
 		),
-		mcp.WithString("start_ip", mcp.Required()),
-		mcp.WithString("end_ip", mcp.Required()),
+		mcp.WithString(
+			"start_ip",
+			mcp.Required(),
+			mcp.Description(
+				"First IPv4 or IPv6 address to include, for example 192.0.2.10. Zone identifiers are not supported.",
+			),
+		),
+		mcp.WithString(
+			"end_ip",
+			mcp.Required(),
+			mcp.Description(
+				"Last address to include, for example 192.0.2.200. Must be at or after start_ip in the same address family, without a zone identifier.",
+			),
+		),
 	}, networkOptions()...)...), s.handleLookupRange)
 }
 

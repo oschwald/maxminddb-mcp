@@ -9,15 +9,20 @@ func filtersOption() mcp.ToolOption {
 	return mcp.WithArray(
 		"filters",
 		mcp.Description(
-			"Filters for a new query; omit to keep filters when continuing a query",
+			"Conditions on record fields. For example, [{\"field\":\"autonomous_system_number\",\"operator\":\"equals\",\"value\":13335}]. Omit for no filtering on a new query. On paginated queries, omit to retain the original filters.",
 		),
 		mcp.Items(map[string]any{
 			"type": "object", "additionalProperties": false,
 			"required": []string{"field", "operator", "value"},
 			"properties": map[string]any{
-				"field": map[string]any{"type": "string", "minLength": 1},
+				"field": map[string]any{
+					"type":        "string",
+					"minLength":   1,
+					"description": "Field path from inspect_database, such as country.iso_code. Use dots for nested keys or numeric array indexes, or $ for the whole record.",
+				},
 				"operator": map[string]any{
-					"type": "string",
+					"type":        "string",
+					"description": "Comparison to apply. eq, ne, gt, lt, gte, and lte are aliases for the corresponding equality and ordering operators.",
 					"enum": append(
 						filter.SupportedOperators(),
 						"eq",
@@ -28,7 +33,9 @@ func filtersOption() mcp.ToolOption {
 						"lte",
 					),
 				},
-				"value": map[string]any{},
+				"value": map[string]any{
+					"description": "Comparison value. Use an array for in/not_in, a Go regular expression string for regex, or a substring for contains. For exists, true tests for a non-null field and false tests for a missing or null field. Ordering comparisons use numbers.",
+				},
 			},
 		}),
 	)
@@ -41,6 +48,8 @@ func filterModeOption() mcp.ToolOption {
 			"and",
 			"or",
 		),
-		mcp.Description("How to combine filters: 'and' or 'or' (default: 'and')"),
+		mcp.Description(
+			"Combine filters with and (all must match) or or (any can match). Defaults to and for a new query. Omit when paging to retain the original mode.",
+		),
 	)
 }

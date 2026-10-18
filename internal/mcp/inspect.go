@@ -45,15 +45,27 @@ func (s *Server) registerInspectionTool() {
 		"inspect_database",
 		mcp.WithToolTitle("Inspect a database"),
 		mcp.WithDescription(
-			"Read full MMDB metadata and observe field paths, types, and examples from a bounded sample. The observed fields are not a complete schema.",
+			"Read MMDB metadata and sample field paths, types, and examples. Use this to choose fields, filter paths, or a summarize_network group_by field. Sampling starts at the first network record, so observed fields are not a complete schema. Use verify_database to check file integrity.",
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithOutputSchema[inspectionResult](),
-		mcp.WithString("database", mcp.Required()),
-		mcp.WithInteger("sample_size", mcp.Min(1), mcp.Max(1000), mcp.DefaultNumber(100)),
+		mcp.WithString(
+			"database",
+			mcp.Required(),
+			mcp.Description("Exact filename of a loaded database from list_databases."),
+		),
+		mcp.WithInteger(
+			"sample_size",
+			mcp.Min(1),
+			mcp.Max(1000),
+			mcp.DefaultNumber(100),
+			mcp.Description(
+				"Maximum network records to sample. Larger samples may reveal more fields. Sampling can stop early at internal field limits.",
+			),
+		),
 	), s.handleInspectDatabase)
 }
 

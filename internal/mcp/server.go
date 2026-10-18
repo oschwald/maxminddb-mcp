@@ -106,17 +106,29 @@ func (s *Server) Serve(ctx context.Context, input io.Reader, output io.Writer) e
 func (s *Server) registerTools() {
 	s.registerInstallTools()
 	// lookup_ip tool
-	lookupIPTool := mcp.NewTool("lookup_ip",
+	lookupIPTool := mcp.NewTool(
+		"lookup_ip",
 		mcp.WithToolTitle("Look up an IP address"),
-		mcp.WithDescription("Look up an IP address in one database or all loaded databases"),
+		mcp.WithDescription(
+			"Look up one IP address in local MMDB databases. Returns the matching record and network, with found=false when no record matches. Use lookup_ips for a batch of addresses or lookup_network to enumerate records in a CIDR.",
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
 		mcp.WithRawOutputSchema([]byte(ipOutputSchema)),
-		mcp.WithString("ip", mcp.Required(), mcp.Description("IP address to lookup")),
+		mcp.WithString(
+			"ip",
+			mcp.Required(),
+			mcp.Description("IPv4 or IPv6 address, for example 8.8.8.8 or 2001:4860:4860::8888."),
+		),
 		fieldsOption(),
-		mcp.WithString("database", mcp.Description("Specific database to query (optional)")),
+		mcp.WithString(
+			"database",
+			mcp.Description(
+				"Exact filename from list_databases. Omit to query all loaded databases.",
+			),
+		),
 	)
 	s.mcp.AddTool(lookupIPTool, s.handleLookupIP)
 	s.registerBatchTool()
@@ -130,12 +142,14 @@ func (s *Server) registerTools() {
 		"lookup_network", append([]mcp.ToolOption{
 			mcp.WithToolTitle("Query a network"),
 			mcp.WithDescription(
-				"Query a CIDR range with optional filters. filters must be an array of objects with keys: field, operator, value. Example: {\"field\":\"traits.user_type\",\"operator\":\"equals\",\"value\":\"residential\"}. Supported operators: equals, not_equals, in, not_in, contains, regex, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists.",
+				"Find stored network records overlapping a CIDR, with optional filters and field selection. Returned networks may extend beyond the requested CIDR. Use lookup_range for start/end bounds or summarize_network for grouped counts. Repeat the network and database on each page. Stop when has_more is false.",
 			),
 			mcp.WithString(
 				"network",
 				mcp.Required(),
-				mcp.Description("CIDR network to scan (e.g., '192.168.1.0/24')"),
+				mcp.Description(
+					"IPv4 or IPv6 CIDR to scan, for example 192.168.1.0/24 or 2001:db8::/32. Broad queries may scan many records.",
+				),
 			),
 		}, networkOptions()...)...)
 	s.mcp.AddTool(lookupNetworkTool, s.handleLookupNetwork)
@@ -144,7 +158,9 @@ func (s *Server) registerTools() {
 	// list_databases tool
 	listDBTool := mcp.NewTool("list_databases",
 		mcp.WithToolTitle("List databases"),
-		mcp.WithDescription("List available databases, download status, and setup instructions"),
+		mcp.WithDescription(
+			"List loaded databases, their metadata, download status, and setup instructions. Call this first to choose exact database filenames for other tools. An empty list can mean the initial download is still running. If status is downloading, wait and call again without starting another update.",
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(true),
@@ -159,7 +175,7 @@ func (s *Server) registerTools() {
 			"update_databases",
 			mcp.WithToolTitle("Update databases"),
 			mcp.WithDescription(
-				"Download and replace configured databases with the latest MaxMind editions",
+				"Update configured and API-installed MaxMind editions using the server's credentials. Downloads and loads changed databases, replacing existing files. Returns a result or error for each edition. Use install_edition to add an edition. URL imports from install_database are not tracked for updates.",
 			),
 			mcp.WithReadOnlyHintAnnotation(false),
 			mcp.WithDestructiveHintAnnotation(true),

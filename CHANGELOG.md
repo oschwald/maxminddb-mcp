@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Clarify MCP tool selection, parameter meanings, pagination, and analysis limits in tool descriptions and input schemas.
 - Shorten the README and move detailed client setup, configuration, and tool reference into linked guides. Keep existing client links working and add setup troubleshooting.
 
 ## [0.3.0] - 2026-10-17

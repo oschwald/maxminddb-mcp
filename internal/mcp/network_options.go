@@ -15,7 +15,7 @@ func networkOptions() []mcp.ToolOption {
 		mcp.WithString(
 			"database",
 			mcp.Description(
-				"Database name from list_databases; required when more than one is loaded",
+				"Exact filename from list_databases. Required when more than one database is loaded. Repeat the same name on each page.",
 			),
 		),
 		filtersOption(),
@@ -25,10 +25,22 @@ func networkOptions() []mcp.ToolOption {
 			mcp.Min(1),
 			mcp.Max(iterator.MaxResults),
 			mcp.DefaultNumber(iterator.MaxResults),
-			mcp.Description("Page size from 1 to 1000"),
+			mcp.Description(
+				"Maximum matching records to return on this page. Use a smaller page to reduce response size.",
+			),
 		),
 		fieldsOption(),
-		mcp.WithString("iterator_id", mcp.Description("Resume existing iterator (fast path)")),
-		mcp.WithString("resume_token", mcp.Description("Fallback token if iterator expired")),
+		mcp.WithString(
+			"iterator_id",
+			mcp.Description(
+				"ID from the previous page. Omit on the first request. Send with the latest resume_token to continue if the iterator expires.",
+			),
+		),
+		mcp.WithString(
+			"resume_token",
+			mcp.Description(
+				"Token from the previous page, used if iterator_id is missing or expired. Omit on the first request. If the database build changed, start a new query.",
+			),
+		),
 	}
 }
