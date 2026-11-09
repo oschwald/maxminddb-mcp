@@ -7,7 +7,7 @@ toolchain go1.27.2
 require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gofrs/flock v0.13.1
-	github.com/mark3labs/mcp-go v1.3.0
+	github.com/mark3labs/mcp-go v1.5.0
 	github.com/maxmind/geoipupdate/v8 v8.0.0
 	github.com/oschwald/maxminddb-golang/v2 v2.8.0
 	github.com/pelletier/go-toml/v2 v2.4.3
