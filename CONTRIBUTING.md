@@ -4,7 +4,7 @@
 
 ### Build from source
 
-To install the executable with Go 1.26 or later (the module selects Go 1.27.2):
+To install the executable with Go 1.26 or later (the module selects Go 1.27.4):
 
 ```bash
 go install github.com/oschwald/maxminddb-mcp/cmd/maxminddb-mcp@latest
@@ -29,7 +29,7 @@ go mod download
 npm ci
 ```
 
-Use Go 1.27.2 for development and release builds. The runtime module requires Go 1.26. The fixture module requires Go 1.27 and uses a pinned `mmdbwriter/v2` prerelease. It is a separate module in `testdata`, not a runtime dependency.
+Use Go 1.27.4 for development and release builds. The runtime module requires Go 1.26. The fixture module requires Go 1.27 and uses a pinned `mmdbwriter/v2` prerelease. It is a separate module in `testdata`, not a runtime dependency.
 
 CI uses Node 24.22.0, Prettier 3.9.10, golangci-lint 2.15.0, and GoReleaser 2.18.3. Prettier is pinned in `package-lock.json`. Install the Go tools at those versions, or run them through [mise](https://mise.jdx.dev/):
 
