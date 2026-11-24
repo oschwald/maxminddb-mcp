@@ -216,6 +216,35 @@ func TestNetworkIteratorLimit(t *testing.T) {
 	}
 }
 
+func TestCompletedQueriesDoNotHoldIteratorLimit(t *testing.T) {
+	server := testServer(t)
+	args := map[string]any{"network": "1.0.0.0/8", "max_results": iterator.MaxResults}
+	var first *iterator.IterationResult
+	for i := range iterator.MaxIterators + 1 {
+		result, err := server.handleLookupNetwork(t.Context(), networkRequest(args))
+		if err != nil || result.IsError {
+			t.Fatalf("completed queries blocked query %d: %+v, %v", i+1, result, err)
+		}
+		page := result.StructuredContent.(*iterator.IterationResult)
+		if page.HasMore {
+			t.Fatal("fixture query must complete in one page")
+		}
+		if first == nil {
+			first = page
+		}
+	}
+	// A completed query's token returns its final page after eviction.
+	args["resume_token"] = first.ResumeToken
+	result, err := server.handleLookupNetwork(t.Context(), networkRequest(args))
+	if err != nil || result.IsError {
+		t.Fatalf("completed query could not resume: %+v, %v", result, err)
+	}
+	page := result.StructuredContent.(*iterator.IterationResult)
+	if page.HasMore || len(page.Results) != 0 {
+		t.Fatalf("completed query did not return an empty final page: %+v", page)
+	}
+}
+
 func TestAmbiguousDatabase(t *testing.T) {
 	server := testServer(t)
 	if err := server.dbManager.LoadDatabase(testCityDB); err != nil {

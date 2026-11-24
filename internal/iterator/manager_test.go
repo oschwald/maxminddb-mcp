@@ -194,6 +194,80 @@ func TestIteratorLimit(t *testing.T) {
 	}
 }
 
+func TestIteratorLimitEvictsCompletedIterator(t *testing.T) {
+	manager, first, _ := testIterator(t)
+	create := func() (*ManagedIterator, error) {
+		return manager.CreateIterator(first.Reader, first.Database, first.Network, nil, "and")
+	}
+	finish := func(iterator *ManagedIterator) string {
+		t.Helper()
+		page, err := manager.Iterate(t.Context(), iterator, MaxResults, nil)
+		if err != nil || page.HasMore {
+			t.Fatalf("query did not complete: %+v, %v", page, err)
+		}
+		return page.ResumeToken
+	}
+	iterators := []*ManagedIterator{first}
+	for len(iterators) < MaxIterators {
+		iterator, err := create()
+		if err != nil {
+			t.Fatal(err)
+		}
+		iterators = append(iterators, iterator)
+	}
+	// Unfinished iterators are never evicted.
+	if _, err := create(); !errors.Is(err, ErrIteratorLimit) {
+		t.Fatalf("evicted an unfinished iterator: %v", err)
+	}
+
+	now := time.Now()
+	oldest, older, busy, unfinished := iterators[0], iterators[1], iterators[2], iterators[3]
+	token := finish(oldest)
+	finish(older)
+	finish(busy)
+	oldest.LastAccess = now.Add(-3 * time.Second)
+	older.LastAccess = now.Add(-2 * time.Second)
+	busy.LastAccess = now.Add(-4 * time.Second)
+	unfinished.LastAccess = now.Add(-5 * time.Second)
+
+	busy.busy <- struct{}{}
+	_, err := create()
+	<-busy.busy
+	if err != nil {
+		t.Fatalf("completed iterator did not free a slot: %v", err)
+	}
+	if _, ok := manager.iterators[oldest.ID]; ok || !oldest.closed {
+		t.Fatal("oldest completed iterator was not released")
+	}
+	// A caller that looked up the iterator before eviction still gets the final page.
+	page, err := manager.Iterate(t.Context(), oldest, MaxResults, nil)
+	if err != nil || page.HasMore || len(page.Results) != 0 || page.ResumeToken != token {
+		t.Fatalf("evicted iterator did not return its final page: %+v, %v", page, err)
+	}
+	for _, iterator := range []*ManagedIterator{older, busy, unfinished} {
+		if _, ok := manager.iterators[iterator.ID]; !ok || iterator.closed {
+			t.Fatal("evicted an iterator other than the oldest idle completed one")
+		}
+	}
+	if len(manager.iterators) != MaxIterators {
+		t.Fatalf("got %d iterators, want %d", len(manager.iterators), MaxIterators)
+	}
+
+	// The evicted query's token still returns its empty final page.
+	resumed, err := manager.ResumeIterator(first.Reader, first.Database, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The previously busy iterator is now the oldest idle completed query.
+	if _, ok := manager.iterators[busy.ID]; ok || !busy.closed {
+		t.Fatal("resume did not reuse the oldest completed slot")
+	}
+	page, err = manager.Iterate(t.Context(), resumed, MaxResults, nil)
+	if err != nil || page.HasMore || len(page.Results) != 0 {
+		t.Fatalf("evicted token did not return an empty final page: %+v, %v", page, err)
+	}
+}
+
 func TestCanceledPageCanBeRetried(t *testing.T) {
 	manager, iterator, expected := testIterator(t)
 	ctx, cancel := context.WithCancel(t.Context())
