@@ -125,7 +125,7 @@ Antigravity CLI is the primary Google integration. Its `.antigravity-plugin/plug
 
 The generated Claude plugin and repository Cursor manifests support directory submissions. `glama.json` identifies the GitHub maintainer for ownership verification. These files do not approve or claim a listing. Submit them through each directory's account workflow after merging. The shorter plugin identifiers replace `maxminddb-mcp`; users of older bundles must reinstall and configure the new plugin. The old MCP Registry entry remains separate from the new name.
 
-Prerelease tags publish GitHub assets but skip the registry and Homebrew. Validate registry metadata without publishing:
+Prerelease tags such as `v1.2.0-rc.1` publish GitHub assets and versioned container images. They skip the registry, Homebrew, and the `latest`, `latest-amd64`, and `latest-arm64` container tags. Validate registry metadata without publishing:
 
 ```bash
 go run github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1 validate server.json
