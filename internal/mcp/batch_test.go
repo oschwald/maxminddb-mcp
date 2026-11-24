@@ -50,3 +50,19 @@ func TestBatchLookup(t *testing.T) {
 	)
 	assertToolError(t, result, err, "canceled")
 }
+
+func TestBatchLookupIgnoresIPv4OnlyDatabaseForIPv6(t *testing.T) {
+	server := serverWithDatabases(t, "GeoIP2-City-Test.mmdb", "MaxMind-DB-test-ipv4-24.mmdb")
+	result, err := server.handleLookupIPs(
+		t.Context(),
+		networkRequest(map[string]any{"ips": []string{"2001:218::1", "1.1.1.1"}}),
+	)
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: %+v, %v", result, err)
+	}
+	for _, entry := range result.StructuredContent.(map[string]any)["results"].([]map[string]any) {
+		if entry["error"] != nil || entry["databases"] == nil {
+			t.Fatalf("expected per-database results: %v", entry)
+		}
+	}
+}

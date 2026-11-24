@@ -21,7 +21,7 @@ Arguments: required `ip` (IPv4 or IPv6), optional `database` from `list_database
 }
 ```
 
-A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`. If no database is available, an all-database lookup returns `no_databases`, as network lookup does. Call `list_databases` for download status and setup instructions. For `db_not_found` or `database_required`, use its exact database filenames.
+A single-database result contains `ip`, `database`, `found`, `network`, and `data`. If no record matches, `found` is false and `network` and `data` are null. Without `database`, the result contains `ip` and a `databases` map keyed by database name. Each entry contains `found`, `network`, and `data`. An IPv6 address in an IPv4-only database has `found: false`, and an IPv4-mapped IPv6 address is looked up as its IPv4 address there. If one database's lookup fails, its entry adds an `error` object with `code` and `message`, and the other databases still answer. Such a partial failure is a successful result, so check entries for `error`. The call returns `lookup_failed` only when every database fails. If no database is available, an all-database lookup returns `no_databases`, as network lookup does. Call `list_databases` for download status and setup instructions. For `db_not_found` or `database_required`, use its exact database filenames.
 
 ## `lookup_ips`
 
