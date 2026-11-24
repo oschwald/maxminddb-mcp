@@ -2,6 +2,7 @@ package filter
 
 import (
 	"math"
+	"math/big"
 	"slices"
 	"strings"
 	"testing"
@@ -415,6 +416,9 @@ func TestToFloat64(t *testing.T) {
 		{float32(42.5), 42.5, false},
 		{float64(42.5), 42.5, false},
 		{"42.5", 42.5, false},
+		{big.NewInt(42), 42.0, false},
+		{new(big.Int).Lsh(big.NewInt(1), 120), 0x1p120, false},
+		{(*big.Int)(nil), 0, true},
 		{"invalid", 0, true},
 		{true, 0, true},
 	}
@@ -624,6 +628,20 @@ func TestNumericEquality(t *testing.T) {
 		{"large signed integer", int64(-1<<53 - 1), float64(-1 << 53), false},
 		{"string stays string", uint64(42), "42", false},
 		{"boolean stays boolean", uint64(1), true, false},
+		{"uint128 and JSON number", big.NewInt(5), float64(5), true},
+		{"uint128 and integer", big.NewInt(5), uint64(5), true},
+		{"uint128 values", big.NewInt(5), big.NewInt(5), true},
+		{"different uint128 values", big.NewInt(5), big.NewInt(6), false},
+		{"uint128 above uint64", new(big.Int).Lsh(big.NewInt(1), 64), float64(1 << 64), true},
+		{
+			"uint128 near JSON number",
+			new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)),
+			float64(1 << 64),
+			false,
+		},
+		{"uint128 fraction", big.NewInt(42), 42.5, false},
+		{"uint128 string stays string", big.NewInt(42), "42", false},
+		{"nil uint128", (*big.Int)(nil), float64(0), false},
 		{"nil", nil, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -677,6 +695,20 @@ func TestNumericOrdering(t *testing.T) {
 		{"numeric string", "42.5", uint64(42), 1, true},
 		{"infinity", math.Inf(1), uint64(1<<64 - 1), 1, true},
 		{"negative infinity", math.Inf(-1), int64(-1 << 63), -1, true},
+		{"uint128 and integer", new(big.Int).Lsh(big.NewInt(1), 120), 0, 1, true},
+		{"uint128 and uint64", new(big.Int).Lsh(big.NewInt(1), 64), uint64(1<<64 - 1), 1, true},
+		{"uint128 and JSON number", big.NewInt(42), 42.5, -1, true},
+		{"equal uint128 values", big.NewInt(42), big.NewInt(42), 0, true},
+		{
+			"uint128 above JSON number",
+			new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)),
+			float64(1 << 64),
+			1,
+			true,
+		},
+		{"uint128 and numeric string", big.NewInt(42), "42.5", -1, true},
+		{"uint128 and infinity", new(big.Int).Lsh(big.NewInt(1), 120), math.Inf(1), -1, true},
+		{"nil uint128", (*big.Int)(nil), 1, 0, false},
 		{"NaN", math.NaN(), 1, 0, false},
 		{"invalid string", "unknown", 1, 0, false},
 		{"boolean", true, 1, 0, false},

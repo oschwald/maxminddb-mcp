@@ -181,9 +181,22 @@ func exactNumber(v reflect.Value) *big.Rat {
 	case reflect.Float32, reflect.Float64:
 		return new(big.Rat).SetFloat64(v.Float())
 	default:
+		// The reader decodes uint128 values as *big.Int.
+		if n := bigInt(v); n != nil {
+			return new(big.Rat).SetInt(n)
+		}
 		return nil
 	}
 }
+
+func bigInt(v reflect.Value) *big.Int {
+	if v.Kind() != reflect.Pointer || v.Type() != bigIntType || v.IsNil() {
+		return nil
+	}
+	return v.Interface().(*big.Int)
+}
+
+var bigIntType = reflect.TypeFor[*big.Int]()
 
 // containsValue checks if a value is in an array.
 func containsValue(filterValue, fieldValue any) bool {
@@ -280,6 +293,12 @@ func toFloat64(value any) (float64, error) {
 		return v, nil
 	case string:
 		return strconv.ParseFloat(v, 64)
+	case *big.Int:
+		if v == nil {
+			return 0, fmt.Errorf("cannot convert nil %T to float64", value)
+		}
+		f, _ := new(big.Float).SetInt(v).Float64()
+		return f, nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to float64", value)
 	}
