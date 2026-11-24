@@ -494,3 +494,97 @@ func TestStartupUpdateCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateErrorsHideRedirectURLs(t *testing.T) {
+	const signed = "/path-secret?signature=target-secret"
+	hangUp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_ = conn.Close()
+	}))
+	defer hangUp.Close()
+	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(
+			w,
+			"<Error>SignatureDoesNotMatch "+r.URL.RequestURI()+"</Error>",
+			http.StatusForbidden,
+		)
+	}))
+	defer denied.Close()
+	for name, test := range map[string]struct {
+		handler http.HandlerFunc
+		want    string
+	}{
+		"failed target": {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, hangUp.URL+signed, http.StatusFound)
+			},
+		},
+		"invalid location": {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "http://storage.invalid/%zz"+signed)
+				w.WriteHeader(http.StatusFound)
+			},
+			want: "download failed: performing metadata request: " +
+				`failed to parse Location header "[redacted]": ` +
+				`parse "[redacted]": invalid URL escape "[redacted]"`,
+		},
+		"denied target": {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, denied.URL+signed, http.StatusFound)
+			},
+			want: "download failed: unexpected HTTP status code: received HTTP status code: 403",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			updater := testUpdater(t, test.handler)
+			result, err := updater.InstallEdition(t.Context(), "GeoLite2-ASN", nil)
+			if err != nil || !strings.HasPrefix(result.Error, "download failed: ") ||
+				test.want != "" && result.Error != test.want {
+				t.Fatalf("unexpected redirect failure: %+v, %v", result, err)
+			}
+			status := updater.Status()
+			for _, message := range []string{result.Error, status.Error, status.Results[0].Error} {
+				if strings.Contains(message, "secret") {
+					t.Fatalf("update error exposed the redirect URL: %q", message)
+				}
+			}
+		})
+	}
+}
+
+func TestDownloadErrorKeepsDirectResponseBody(t *testing.T) {
+	err := fmt.Errorf("unexpected HTTP status code: %w", client.HTTPError{
+		Body:       "Invalid license key",
+		StatusCode: http.StatusUnauthorized,
+	})
+	if got := downloadError(err, false); !strings.HasSuffix(got, ": 401: Invalid license key") {
+		t.Fatalf("direct response body was removed: %q", got)
+	}
+	if got := downloadError(err, true); !strings.HasSuffix(got, "received HTTP status code: 401") {
+		t.Fatalf("redirected response body was kept: %q", got)
+	}
+}
+
+func TestRedactLicenseKey(t *testing.T) {
+	for _, test := range []struct {
+		key, message, want string
+	}{
+		{"x", "context canceled", "context canceled"},
+		{"x", "invalid license key: x", "invalid license key: [redacted]"},
+		{"x", "x, xx, x_x, x", "[redacted], xx, x_x, [redacted]"},
+		{"key", "key=key&keys=key1", "[redacted]=[redacted]&keys=key1"},
+		{"-ab", "x-ab, -abc", "x[redacted], -abc"},
+		{"abcdef_0123456789", "url=/abcdef_0123456789suffix", "url=/[redacted]suffix"},
+		{"", "unchanged", "unchanged"},
+	} {
+		updater := &Updater{config: config.DefaultConfig()}
+		updater.config.MaxMind.LicenseKey = test.key
+		if got := updater.redact(test.message); got != test.want {
+			t.Errorf("redact(%q) with key %q = %q, want %q", test.message, test.key, got, test.want)
+		}
+	}
+}
