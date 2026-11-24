@@ -162,6 +162,11 @@ func compareExactNumbers(fieldValue, filterValue any) (int, bool) {
 		return cmp.Compare(field.Uint(), filter.Uint()), true
 	case field.CanFloat() && filter.CanFloat():
 		left, right := field.Float(), filter.Float()
+		if field.Kind() == reflect.Float32 && filter.Kind() != reflect.Float32 {
+			right = matchFloat32(float32(left), right)
+		} else if filter.Kind() == reflect.Float32 && field.Kind() != reflect.Float32 {
+			left = matchFloat32(float32(right), left)
+		}
 		return cmp.Compare(left, right), !math.IsNaN(left) && !math.IsNaN(right) &&
 			!math.IsInf(left, 0) && !math.IsInf(right, 0)
 	}
@@ -261,7 +266,57 @@ func compareNumbers(fieldValue, filterValue any) (int, bool) {
 	if err1 != nil || err2 != nil || math.IsNaN(fieldFloat) || math.IsNaN(filterFloat) {
 		return 0, false
 	}
+	if field, ok := fieldValue.(float32); ok {
+		filterFloat = matchFloat32(field, filterFloat)
+	} else if filter, ok := filterValue.(float32); ok {
+		fieldFloat = matchFloat32(filter, fieldFloat)
+	}
 	return cmp.Compare(fieldFloat, filterFloat), true
+}
+
+// matchFloat32 compares a number with an MMDB float at float32 precision.
+// MMDB floats decode as float32, and JSON output prints the shortest decimal
+// that parses back to the same float32. A JSON client sends that decimal back
+// as a float64, which usually differs from the widened float32. matchFloat32
+// returns the widened float32 when value denotes it, so the two compare as
+// equal, and returns value unchanged otherwise. Nearby numbers that round to the
+// same float32 therefore also match.
+func matchFloat32(stored float32, value float64) float64 {
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return value
+	}
+	rounded := float32(value)
+	if math.IsInf(float64(rounded), 0) {
+		// Finite values beyond the float32 range never match.
+		return value
+	}
+	if float64(rounded) != value {
+		// A decimal parsed as float64 can land exactly halfway between two
+		// float32 values. Rounding then picks the even one, which can differ
+		// from the float32 the decimal was printed from, as with 7.038531e-26.
+		// In that case the value denotes the float32 that prints as it.
+		direction := float32(math.Inf(1))
+		if value < float64(rounded) {
+			direction = float32(math.Inf(-1))
+		}
+		neighbor := math.Nextafter32(rounded, direction)
+		if value == (float64(rounded)+float64(neighbor))/2 &&
+			printedFloat32(rounded) != value && printedFloat32(neighbor) == value {
+			rounded = neighbor
+		}
+	}
+	if rounded == stored {
+		return float64(stored)
+	}
+	return value
+}
+
+// printedFloat32 returns the float64 nearest the decimal that JSON output prints
+// for value.
+func printedFloat32(value float32) float64 {
+	// ParseFloat accepts every string that FormatFloat returns.
+	printed, _ := strconv.ParseFloat(strconv.FormatFloat(float64(value), 'g', -1, 32), 64)
+	return printed
 }
 
 // toFloat64 converts various numeric types to float64.
