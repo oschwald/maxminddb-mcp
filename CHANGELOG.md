@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Compare uint128 fields in filters. Numeric equality, `in`, and ordering filters on these fields never matched, and `not_equals` and `not_in` always matched, so network, range, and summary tools dropped or kept records incorrectly.
+- `lookup_ip` and `lookup_ips` without `database` no longer fail when one database fails. That database's entry reports the error and the others still answer. IPv6 addresses in IPv4-only databases return `found: false`, and IPv4-mapped IPv6 addresses are looked up as IPv4 there.
 
 ## [0.4.0] - 2026-10-18
 

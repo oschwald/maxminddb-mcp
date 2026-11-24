@@ -1,13 +1,17 @@
 package mcp
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/oschwald/maxminddb-mcp/internal/config"
 	"github.com/oschwald/maxminddb-mcp/internal/database"
 	"github.com/oschwald/maxminddb-mcp/internal/iterator"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 const (
@@ -436,5 +440,149 @@ func createTestMCPConfig(t *testing.T) *config.Config {
 		IteratorCleanupInterval:         "5m",
 		IteratorTTLDuration:             30 * time.Minute,
 		IteratorCleanupIntervalDuration: 5 * time.Minute,
+	}
+}
+
+func TestLookupIPInAllDatabasesKeepsOtherResults(t *testing.T) {
+	const (
+		cityDB   = "GeoIP2-City-Test.mmdb"
+		ipv4DB   = "MaxMind-DB-test-ipv4-24.mmdb"
+		brokenDB = "GeoIP2-City-Test-Broken-Double-Format.mmdb"
+	)
+	schema := compileTestSchema(t, ipOutputSchema)
+
+	tests := []struct {
+		name      string
+		dbs       []string
+		ip        string
+		wantError string
+		found     map[string]bool
+		failed    []string
+	}{
+		{
+			name:  "IPv6 address skips IPv4-only database",
+			dbs:   []string{cityDB, ipv4DB},
+			ip:    "2001:218::1",
+			found: map[string]bool{cityDB: true, ipv4DB: false},
+		},
+		{
+			name:  "IPv4-mapped address uses IPv4 address in IPv4-only database",
+			dbs:   []string{cityDB, ipv4DB},
+			ip:    "::ffff:1.1.1.1",
+			found: map[string]bool{cityDB: false, ipv4DB: true},
+		},
+		{
+			name:  "IPv6 address with only an IPv4-only database",
+			dbs:   []string{ipv4DB},
+			ip:    "2001:218::1",
+			found: map[string]bool{ipv4DB: false},
+		},
+		{
+			name:   "decode failure keeps other results",
+			dbs:    []string{cityDB, brokenDB},
+			ip:     "2001:220::",
+			found:  map[string]bool{cityDB: true, brokenDB: false},
+			failed: []string{brokenDB},
+		},
+		{
+			name:      "every database failing returns an error",
+			dbs:       []string{brokenDB},
+			ip:        "2001:220::",
+			wantError: "lookup_failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := serverWithDatabases(t, tt.dbs...)
+			result, err := server.lookupIPInAllDatabases(netip.MustParseAddr(tt.ip), tt.ip, nil)
+			if tt.wantError != "" {
+				assertToolError(t, result, err, tt.wantError)
+				return
+			}
+			if err != nil || result.IsError {
+				t.Fatalf("unexpected failure: %+v, %v", result, err)
+			}
+			validateTestSchema(t, schema, result.StructuredContent)
+
+			entries := result.StructuredContent.(map[string]any)["databases"].(map[string]any)
+			if len(entries) != len(tt.found) {
+				t.Fatalf(
+					"got %d database entries, want %d: %v",
+					len(entries),
+					len(tt.found),
+					entries,
+				)
+			}
+			for db, found := range tt.found {
+				entry := entries[db].(map[string]any)
+				if entry["found"] != found {
+					t.Errorf("%s: found = %v, want %v", db, entry["found"], found)
+				}
+				_, hasError := entry["error"]
+				wantFailure := slices.Contains(tt.failed, db)
+				if hasError != wantFailure {
+					t.Errorf(
+						"%s: error present = %v, want %v: %v",
+						db,
+						hasError,
+						wantFailure,
+						entry,
+					)
+				}
+				if !found && (entry["network"] != nil || entry["data"] != nil) {
+					t.Errorf("%s: missing record should have null network and data: %v", db, entry)
+				}
+			}
+		})
+	}
+}
+
+func serverWithDatabases(t *testing.T, names ...string) *Server {
+	t.Helper()
+	db, err := database.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	for _, name := range names {
+		if err := db.LoadDatabase("../../testdata/test-data/" + name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager := iterator.New(time.Minute, time.Second)
+	t.Cleanup(manager.StopCleanup)
+	return New(createTestMCPConfig(t), db, nil, manager, "test")
+}
+
+func compileTestSchema(t *testing.T, raw string) *jsonschema.Schema {
+	t.Helper()
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader([]byte(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("schema.json", doc); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return schema
+}
+
+func validateTestSchema(t *testing.T, schema *jsonschema.Schema, value any) {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Validate(doc); err != nil {
+		t.Fatalf("output does not match schema: %v", err)
 	}
 }

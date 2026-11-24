@@ -40,7 +40,10 @@ const ipOutputSchema = `{
    "databases":{"type":"object","additionalProperties":{
     "type":"object","required":["found","network","data"],
     "properties":{
-     "found":{"type":"boolean"},"network":{"type":["string","null"]},"data":{}
+     "found":{"type":"boolean"},"network":{"type":["string","null"]},"data":{},
+     "error":{"type":"object","required":["code","message"],
+      "description":"Present when this database's lookup failed. found is false and network and data are null.",
+      "properties":{"code":{"type":"string"},"message":{"type":"string"}}}
     }
    }}
   }}

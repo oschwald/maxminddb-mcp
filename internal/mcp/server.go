@@ -485,13 +485,16 @@ func (s *Server) lookupIPInSingleDatabase(
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
-// lookupIPInAllDatabases performs IP lookup across all databases.
+// lookupIPInAllDatabases performs IP lookup across all databases. A failure
+// in one database is reported in that database's entry so the others still
+// answer. The call fails only when every database fails.
 func (s *Server) lookupIPInAllDatabases(
 	ip netip.Addr,
 	ipStr string,
 	fields []string,
 ) (*mcp.CallToolResult, error) {
 	results := make(map[string]any)
+	var failures []string
 	databases := s.dbManager.ListDatabases()
 
 	for _, dbInfo := range databases {
@@ -500,24 +503,34 @@ func (s *Server) lookupIPInAllDatabases(
 			continue
 		}
 
-		var record any
-		lookup := reader.Lookup(ip)
-		if err := lookup.Decode(&record); err != nil {
-			return toolError(
-				"lookup_failed",
-				fmt.Sprintf("Lookup in %s failed: %v", dbInfo.Name, err),
-			), nil
+		dbResult := map[string]any{"found": false, "network": nil, "data": nil}
+		results[dbInfo.Name] = dbResult
+
+		// An IPv4-only database cannot contain an IPv6 address. Look up an
+		// IPv4-mapped IPv6 address as its IPv4 address.
+		dbIP := ip
+		if reader.Metadata.IPVersion == 4 && ip.Is6() {
+			if !ip.Is4In6() {
+				continue
+			}
+			dbIP = ip.Unmap()
 		}
 
-		dbResult := map[string]any{
-			"data": record, "found": lookup.Found(), "network": nil,
+		var record any
+		lookup := reader.Lookup(dbIP)
+		if err := lookup.Decode(&record); err != nil {
+			message := fmt.Sprintf("Lookup in %s failed: %v", dbInfo.Name, err)
+			dbResult["error"] = map[string]any{"code": "lookup_failed", "message": message}
+			failures = append(failures, message)
+			continue
 		}
+
+		dbResult["data"] = record
+		dbResult["found"] = lookup.Found()
 		if lookup.Found() {
 			dbResult["network"] = lookup.Prefix().String()
 			dbResult["data"] = selectFields(record, fields)
 		}
-
-		results[dbInfo.Name] = dbResult
 	}
 
 	if len(results) == 0 {
@@ -525,6 +538,10 @@ func (s *Server) lookupIPInAllDatabases(
 			"no_databases",
 			"No databases available. Call list_databases for download status and setup instructions.",
 		), nil
+	}
+	if len(failures) == len(results) {
+		slices.Sort(failures)
+		return toolError("lookup_failed", strings.Join(failures, "; ")), nil
 	}
 
 	result := map[string]any{
