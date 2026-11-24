@@ -23,12 +23,7 @@ import (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.mmdb$`)
 
 var downloadClient = &http.Client{
-	Transport: func() *http.Transport {
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.ResponseHeaderTimeout = 30 * time.Second
-		transport.DisableCompression = true
-		return transport
-	}(),
+	Transport: newDownloadTransport(true),
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
 			return errors.New("too many redirects")
@@ -150,9 +145,13 @@ func (m *Manager) InstallURL(
 		writer = io.MultiWriter(writer, &downloadProgress{report: report, edition: name})
 	}
 	if _, err := copyDatabase(ctx, writer, response.Body); err != nil {
-		result.Error = "download did not complete within the 1 GiB limit"
-		if ctx.Err() != nil {
+		switch {
+		case ctx.Err() != nil:
 			result.Error = ctx.Err().Error()
+		case errors.Is(err, errDownloadStalled):
+			result.Error = err.Error()
+		default:
+			result.Error = "download did not complete within the 1 GiB limit"
 		}
 		return result
 	}

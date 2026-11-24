@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unload databases in a subdirectory that is moved out of the database directory or deleted.
 - Prerelease tags no longer move the `latest`, `latest-amd64`, and `latest-arm64` container tags. Prerelease images are published only under their version tags.
 - Keep the permission bits of a database file when a MaxMind update or URL install replaces it. Before, every replacement changed the file to mode 0600, so other users and daemons that could read it lost access. New database files are created with mode 0644, less the umask, as geoipupdate does.
+- Fail MaxMind downloads that receive no response headers for 30 seconds, and MaxMind and URL downloads that receive no data for 1 minute. A stalled server no longer blocks scheduled updates, `update_databases`, `install_edition`, or `install_database` until restart.
 
 ## [0.4.0] - 2026-10-18
 
