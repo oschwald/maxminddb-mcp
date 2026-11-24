@@ -4,7 +4,8 @@ project_name: maxminddb-mcp
 
 before:
   hooks:
-    - go mod tidy
+    # Fail instead of changing go.mod or go.sum during a release.
+    - go mod tidy -diff
     - go generate ./...
 
 builds:
@@ -164,8 +165,10 @@ homebrew_casks:
     repository:
       owner: oschwald
       name: homebrew-tap
-      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
-    skip_upload: '{{ if .Env.HOMEBREW_TAP_TOKEN }}auto{{ else }}true{{ end }}'
+    # GoReleaser only writes dist/homebrew/Casks/maxminddb-mcp.rb. The release
+    # workflow pushes it to the tap after the GitHub release is published, so
+    # the cask never points at draft or missing assets.
+    skip_upload: true
     homepage: https://github.com/oschwald/maxminddb-mcp
     description: Query MaxMind databases through MCP
     binaries: [maxminddb-mcp]
@@ -174,7 +177,11 @@ release:
   github:
     owner: oschwald
     name: maxminddb-mcp
-  draft: false
+  # The release workflow uploads the universal MCPB, Claude plugin, marketplace
+  # catalog, and final checksums, then publishes the draft. A rerun replaces
+  # the draft left by a failed run.
+  draft: true
+  replace_existing_draft: true
   prerelease: auto
   mode: replace
   extra_files:
