@@ -317,3 +317,42 @@ func BenchmarkRealMMDBNetworkIteration(b *testing.B) {
 		}
 	}
 }
+
+func TestUint128FilterWithRealMMDB(t *testing.T) {
+	dbPath := filepath.Join(testDataDir, "MaxMind-DB-test-decoder.mmdb")
+	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
+		t.Skip("MaxMind-DB-test-decoder.mmdb not found. Run: git submodule update --init")
+	}
+	reader, err := maxminddb.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open MMDB file: %v", err)
+	}
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var record any
+	if err := reader.Lookup(netip.MustParseAddr("1.1.1.1")).Decode(&record); err != nil {
+		t.Fatalf("Failed to decode record: %v", err)
+	}
+
+	for _, tc := range []struct {
+		operator string
+		value    any
+		want     bool
+	}{
+		{"greater_than", float64(0), true},
+		{"greater_than_or_equal", float64(1 << 64), true},
+		{"less_than", float64(0), false},
+		{"equals", float64(0x1p120), true},
+		{"not_equals", float64(0x1p120), false},
+		{"in", []any{float64(0x1p120)}, true},
+		{"not_in", []any{float64(0x1p120)}, false},
+	} {
+		engine := filter.New(
+			[]filter.Filter{{Field: "uint128", Operator: tc.operator, Value: tc.value}},
+			filter.ModeAnd,
+		)
+		if got := engine.Matches(record); got != tc.want {
+			t.Errorf("uint128 %s %v: got %v, want %v", tc.operator, tc.value, got, tc.want)
+		}
+	}
+}
