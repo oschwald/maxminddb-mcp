@@ -469,7 +469,11 @@ func TestMetadataAndDuplicateNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	renamed := filepath.Join(t.TempDir(), "custom.mmdb")
+	renamedDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := filepath.Join(renamedDir, "custom.mmdb")
 	//nolint:gosec // The directory comes from t.TempDir.
 	if err := os.WriteFile(renamed, data, 0o600); err != nil {
 		t.Fatal(err)

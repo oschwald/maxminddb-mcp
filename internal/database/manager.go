@@ -40,6 +40,7 @@ type Manager struct {
 	displayToPath map[string]string // Fast lookup from display name to absolute path
 	watcher       *fsnotify.Watcher
 	installing    chan struct{}
+	roots         map[string]struct{} // Resolved configured directories
 	watchDirs     []string
 	mu            sync.RWMutex
 }
@@ -57,27 +58,38 @@ func New() (*Manager, error) {
 		displayToPath: make(map[string]string),
 		watcher:       watcher,
 		installing:    make(chan struct{}, 1),
+		roots:         make(map[string]struct{}),
 		watchDirs:     make([]string, 0),
 	}, nil
 }
 
-// LoadDirectory scans a directory for MMDB files and loads them.
+// LoadDirectory scans a directory for MMDB files and loads them. A symlinked
+// directory is resolved first. Subdirectories that cannot be read are skipped.
 func (m *Manager) LoadDirectory(dir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Ensure directory exists
-	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("directory does not exist: %s", dir)
+	root, err := resolveDirectory(dir)
+	if err != nil {
+		return err
 	}
+	m.roots[root] = struct{}{}
 
 	// Walk the directory looking for .mmdb files and subdirectories to watch
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			if path == root ||
+				(!errors.Is(err, fs.ErrPermission) && !errors.Is(err, fs.ErrNotExist)) {
+				return err
+			}
+			slog.Warn("Skipping unreadable directory", "path", path, "err", err)
+			if d != nil && d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 
-		if d.IsDir() && path != dir {
+		if d.IsDir() && path != root {
 			return m.watchSubdirectory(path)
 		}
 
@@ -112,12 +124,18 @@ func (m *Manager) WatchDirectory(dir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	root, err := resolveDirectory(dir)
+	if err != nil {
+		return err
+	}
+	m.roots[root] = struct{}{}
+
 	// Add to watcher
-	if err := m.watcher.Add(dir); err != nil {
+	if err := m.watcher.Add(root); err != nil {
 		return fmt.Errorf("failed to watch directory %s: %w", dir, err)
 	}
 
-	m.watchDirs = append(m.watchDirs, dir)
+	m.watchDirs = append(m.watchDirs, root)
 	return nil
 }
 
@@ -147,21 +165,12 @@ func (m *Manager) StartWatching() {
 				}
 
 				if event.Op&fsnotify.Remove == fsnotify.Remove {
-					// Convert to absolute path for removal
-					absPath, err := filepath.Abs(event.Name)
-					if err != nil {
-						absPath = event.Name
-					}
-					m.RemoveDatabaseByPath(absPath)
+					m.RemoveDatabaseByPath(event.Name)
 				}
 
 				if event.Op&fsnotify.Rename == fsnotify.Rename {
 					// Handle rename as remove - the old path is no longer valid
-					absPath, err := filepath.Abs(event.Name)
-					if err != nil {
-						absPath = event.Name
-					}
-					m.RemoveDatabaseByPath(absPath)
+					m.RemoveDatabaseByPath(event.Name)
 
 					// Note: We don't try to reload here because event.Name is the old path.
 					// If the file was renamed within a watched directory, we'll get a
@@ -236,18 +245,39 @@ func (m *Manager) RemoveDatabase(name string) {
 	}
 }
 
-// RemoveDatabaseByPath removes a database by absolute path from the manager.
+// RemoveDatabaseByPath removes the database at path from the manager. If path
+// is a subdirectory of a configured directory, it also removes the databases
+// below it. Databases stay loaded when a configured directory itself is
+// removed, as its files are reported separately.
 func (m *Manager) RemoveDatabaseByPath(path string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if resolved, err := databasePath(path); err == nil {
+		path = resolved
+	}
+	_, isRoot := m.roots[path]
+	prefix := path + string(filepath.Separator)
+	below := func(p string) bool { return !isRoot && strings.HasPrefix(p, prefix) }
+
 	// Remove from all maps but don't close reader - let GC handle it
 	// since iterators may still be using the reader
-	if db, exists := m.databases[path]; exists {
-		delete(m.displayToPath, db.Name)
+	for dbPath, db := range m.databases {
+		if dbPath != path && !below(dbPath) {
+			continue
+		}
+		if m.displayToPath[db.Name] == dbPath {
+			delete(m.displayToPath, db.Name)
+		}
+		delete(m.readers, dbPath)
+		delete(m.databases, dbPath)
 	}
-	delete(m.readers, path)
-	delete(m.databases, path)
+
+	// The watcher drops watches on deleted directories itself. Calling
+	// watcher.Remove here could deadlock with the event loop on Windows.
+	m.watchDirs = slices.DeleteFunc(m.watchDirs, func(dir string) bool {
+		return dir == path || below(dir)
+	})
 }
 
 // Close closes the file watcher and clears the database maps.
@@ -269,7 +299,7 @@ func (m *Manager) Close() error {
 
 // loadDatabase loads a database file (must be called with lock held).
 func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
-	absPath, err := filepath.Abs(path)
+	absPath, err := databasePath(path)
 	if err != nil {
 		return fmt.Errorf("resolve database path: %w", err)
 	}
@@ -326,6 +356,42 @@ func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
 	m.displayToPath[dbInfo.Name] = absPath
 
 	return nil
+}
+
+// resolveDirectory returns the absolute path of dir with symlinks resolved.
+// If symlinks cannot be resolved, as on some Windows volumes, it returns the
+// absolute path.
+func resolveDirectory(dir string) (string, error) {
+	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("directory does not exist: %s", dir)
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		slog.Debug("Failed to resolve directory symlinks", "path", dir, "err", err)
+		resolved = dir
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return "", fmt.Errorf("resolve directory %s: %w", dir, err)
+	}
+	return resolved, nil
+}
+
+// databasePath returns the key used for a database file: an absolute path
+// whose parent directory has its symlinks resolved. The filename itself is
+// kept, so a symlinked database keeps its own name. When the parent directory
+// cannot be resolved, such as after it was removed, the absolute path is
+// returned, matching resolveDirectory.
+func databasePath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(absPath))
+	if err != nil {
+		return absPath, nil //nolint:nilerr // Fall back like resolveDirectory.
+	}
+	return filepath.Join(parent, filepath.Base(absPath)), nil
 }
 
 // watchSubdirectory adds a subdirectory to the watcher.

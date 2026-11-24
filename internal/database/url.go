@@ -91,7 +91,7 @@ func (m *Manager) InstallURL(
 		result.Error = err.Error()
 		return result
 	}
-	path, err := filepath.Abs(filepath.Join(dir, name))
+	path, err := databasePath(filepath.Join(dir, name))
 	if err != nil {
 		result.Error = "resolve database directory: " + err.Error()
 		return result
