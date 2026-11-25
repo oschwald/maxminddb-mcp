@@ -73,9 +73,19 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      - name: Package and publish universal MCPB and Claude plugin
+      - name: Save Homebrew cask
+        if: ${{ !contains(github.ref_name, '-') }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: homebrew-cask
+          path: dist/homebrew/Casks/maxminddb-mcp.rb
+          if-no-files-found: error
+          retention-days: 7
+
+      # GoReleaser leaves the release as a draft. Publish it only after every
+      # asset and the final checksums are uploaded.
+      - name: Upload universal MCPB and Claude plugin
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
@@ -83,6 +93,55 @@ jobs:
           version="${RELEASE_TAG#v}"
           node scripts/package-universal-extension.mjs "$version" dist
           gh release upload "$RELEASE_TAG" dist/maxminddb.mcpb dist/maxminddb-claude-plugin.zip dist/claude-marketplace.json dist/checksums.txt --clobber
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi
+
+  # The cask downloads release assets, so update the tap only once the
+  # release is public. Prereleases do not update the tap. This is a separate
+  # job so a failed tap update can be rerun without rerunning GoReleaser.
+  homebrew:
+    name: Update Homebrew cask
+    needs: goreleaser
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Homebrew cask
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: homebrew-cask
+
+      - name: Push cask to the tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew tap update."
+            exit 0
+          fi
+          api_path=repos/oschwald/homebrew-tap/contents/Casks/maxminddb-mcp.rb
+          args=(
+            --method PUT "$api_path"
+            -f message="Brew cask update for maxminddb-mcp version $RELEASE_TAG"
+            -f content="$(base64 -w0 maxminddb-mcp.rb)"
+          )
+          # Only a missing file means a new cask. Report any other error.
+          if sha=$(gh api "$api_path" --jq .sha 2>"$RUNNER_TEMP/lookup-error"); then
+            args+=(-f sha="$sha")
+          elif ! grep -q 'HTTP 404' "$RUNNER_TEMP/lookup-error"; then
+            cat "$RUNNER_TEMP/lookup-error" >&2
+            exit 1
+          fi
+          gh api "${args[@]}" --silent
 
   registry:
     name: Publish to MCP Registry

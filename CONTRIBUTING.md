@@ -100,7 +100,7 @@ docker build --platform linux/amd64 --build-arg TARGETPLATFORM=linux/amd64 -t ma
 GoReleaser uses `dockers_v2` and Docker Buildx to build the multi-platform image and retain the `-amd64` and `-arm64` tags. Snapshot builds load images locally without publishing and add a platform suffix to each tag. They do not update `latest` tags. To test release packaging and images:
 
 ```bash
-HOMEBREW_TAP_TOKEN='' mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
+mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
 node scripts/package-universal-extension.mjs "$(jq -r .version dist/metadata.json)" dist
 npx --yes --package @anthropic-ai/claude-code@2.1.302 -c 'node scripts/test-claude-plugin.mjs dist/maxminddb-claude-plugin.zip'
 ```
@@ -111,9 +111,9 @@ Release CI runs only on version tags. Local build and config checks do not publi
 
 ### Automated publishing
 
-Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, Gemini extensions, and experimental Claude and OpenAI plugin ZIPs. It publishes the files and their SHA-256 checksums to GitHub Releases. Packaging uses the pinned `@anthropic-ai/mcpb` and `fflate` development dependencies. Node.js is not included in the extensions and is not needed to run the server.
+Push a new `vMAJOR.MINOR.PATCH` tag from a reviewed commit to start release CI. GoReleaser builds binaries, containers, Linux packages, MCPB extensions, Gemini extensions, and experimental Claude and OpenAI plugin ZIPs. It uploads the files and their SHA-256 checksums to a draft GitHub release. The `before` hook runs `go mod tidy -diff`, so a release fails if `go.mod` or `go.sum` is not tidy. Packaging uses the pinned `@anthropic-ai/mcpb` and `fflate` development dependencies. Node.js is not included in the extensions and is not needed to run the server.
 
-Each OS and architecture gets its own extension. After GoReleaser finishes, CI assembles all five native builds into `maxminddb.mcpb` and wraps it with the shared skills in `maxminddb-claude-plugin.zip`. It also generates `claude-marketplace.json`, which pins that ZIP to the release URL and SHA-256. CI adds all three assets to `checksums.txt` and uploads them. The fixed asset name supports the README's latest-release link. A shell launcher selects the macOS or Linux executable. The manifest's Windows override launches the `.exe` directly. No additional runtime is required. The smaller platform-specific MCPBs remain available.
+Each OS and architecture gets its own extension. After GoReleaser finishes, CI assembles all five native builds into `maxminddb.mcpb` and wraps it with the shared skills in `maxminddb-claude-plugin.zip`. It also generates `claude-marketplace.json`, which pins that ZIP to the release URL and SHA-256. CI adds all three assets to `checksums.txt` and uploads them. CI then publishes the draft, so the release never appears without these assets or with the older `checksums.txt`. If a step fails before then, the release stays a draft, and rerunning the workflow replaces it. The fixed asset name supports the README's latest-release link. A shell launcher selects the macOS or Linux executable. The manifest's Windows override launches the `.exe` directly. No additional runtime is required. The smaller platform-specific MCPBs remain available.
 
 After a stable release succeeds, CI updates the version in `server.json` and publishes to the MCP Registry as `io.github.oschwald/maxminddb`. Authentication uses GitHub Actions OIDC with `id-token: write`, so no registry token is stored. The registry entry uses the existing multi-architecture OCI image and a named Docker volume for downloaded databases. It requires Docker and MaxMind credentials. Native MCPB downloads remain available on GitHub.
 
@@ -131,7 +131,7 @@ Prerelease tags publish GitHub assets but skip the registry and Homebrew. Valida
 go run github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1 validate server.json
 ```
 
-GoReleaser updates the macOS cask in [oschwald/homebrew-tap](https://github.com/oschwald/homebrew-tap) on stable releases. Publishing uses the `HOMEBREW_TAP_TOKEN` Actions secret in this repository. Use a fine-grained token limited to `oschwald/homebrew-tap`, with Contents read and write permission. Replace the secret before the token expires. Without the secret, GoReleaser skips the tap update and still publishes the other artifacts. After the first successful tap publication, users can install with:
+GoReleaser writes the macOS cask to `dist/homebrew/Casks/maxminddb-mcp.rb`. After a stable release is published, a separate CI job pushes it to [oschwald/homebrew-tap](https://github.com/oschwald/homebrew-tap), so the cask never points at draft assets. If that job fails, rerun only that job. Publishing uses the `HOMEBREW_TAP_TOKEN` Actions secret in this repository. Use a fine-grained token limited to `oschwald/homebrew-tap`, with Contents read and write permission. Replace the secret before the token expires. Without the secret, CI skips the tap update and still publishes the other artifacts. After the first successful tap publication, users can install with:
 
 ```bash
 brew install --cask oschwald/tap/maxminddb-mcp

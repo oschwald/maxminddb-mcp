@@ -62,8 +62,6 @@ jobs:
           distribution: goreleaser
           version: 'v2.18.3'
           args: release --snapshot --clean
-        env:
-          HOMEBREW_TAP_TOKEN: ''
 
       - name: Package universal MCPB and Claude plugin
         run: node scripts/package-universal-extension.mjs "$(jq -r .version dist/metadata.json)" dist
