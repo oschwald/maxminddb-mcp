@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -514,5 +515,67 @@ func TestHTTPGzipDownloadLimit(t *testing.T) {
 			encoded,
 			err,
 		)
+	}
+}
+
+func assertFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("%s has mode %v, want %v", filepath.Base(path), got, want)
+	}
+}
+
+// wantNewFileMode returns the mode a file created with newDatabaseMode gets under
+// the current umask.
+func wantNewFileMode(t *testing.T) os.FileMode {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "reference")
+	if err := os.WriteFile(path, nil, newDatabaseMode); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
+}
+
+func TestInstallURLKeepsFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not have Unix permission bits")
+	}
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(data)
+	}))
+	defer endpoint.Close()
+	m, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Close() }()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "import.mmdb")
+	result := m.InstallURL(t.Context(), dir, "import.mmdb", endpoint.URL, false, nil)
+	if result.Error != "" || !result.Updated {
+		t.Fatalf("install: %+v", result)
+	}
+	assertFileMode(t, path, wantNewFileMode(t))
+	for _, mode := range []os.FileMode{0o640, 0o604} {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		result = m.InstallURL(t.Context(), dir, "import.mmdb", endpoint.URL, true, nil)
+		if result.Error != "" || !result.Updated {
+			t.Fatalf("overwrite: %+v", result)
+		}
+		assertFileMode(t, path, mode)
 	}
 }

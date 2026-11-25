@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -585,5 +586,40 @@ func TestRedactLicenseKey(t *testing.T) {
 		if got := updater.redact(test.message); got != test.want {
 			t.Errorf("redact(%q) with key %q = %q, want %q", test.message, test.key, got, test.want)
 		}
+	}
+}
+
+func TestUpdateKeepsFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not have Unix permission bits")
+	}
+	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := md5.Sum(data) //nolint:gosec // Matches the update API checksum.
+	var downloads atomic.Int32
+	updater := testUpdater(t, downloadHandler(t, data, hex.EncodeToString(sum[:]), &downloads))
+	path := filepath.Join(updater.config.MaxMind.DatabaseDir, "GeoLite2-ASN.mmdb")
+	results, err := updater.UpdateAll(t.Context(), nil)
+	if err != nil || len(results) != 1 || results[0].Error != "" || !results[0].Updated {
+		t.Fatalf("install: %+v, %v", results, err)
+	}
+	assertFileMode(t, path, wantNewFileMode(t))
+	// A changed file forces a download that replaces it.
+	if err := os.WriteFile(path, []byte("bad database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	//nolint:gosec // The test needs a mode that differs from the default.
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	results, err = updater.UpdateAll(t.Context(), nil)
+	if err != nil || len(results) != 1 || results[0].Error != "" || !results[0].Updated {
+		t.Fatalf("replace: %+v, %v", results, err)
+	}
+	assertFileMode(t, path, 0o640)
+	if downloads.Load() != 2 {
+		t.Fatalf("got %d downloads, want 2", downloads.Load())
 	}
 }
