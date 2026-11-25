@@ -31,10 +31,10 @@ npm ci
 
 Use Go 1.27.4 for development and release builds. The runtime module requires Go 1.26. The fixture module requires Go 1.27 and uses a pinned `mmdbwriter/v2` prerelease. It is a separate module in `testdata`, not a runtime dependency.
 
-CI uses Node 24.22.0, Prettier 3.9.10, golangci-lint 2.15.0, and GoReleaser 2.18.3. Prettier is pinned in `package-lock.json`. Install the Go tools at those versions, or run them through [mise](https://mise.jdx.dev/):
+CI uses Node 24.22.0, Prettier 3.9.10, golangci-lint 2.15.0, and GoReleaser 2.20.3. Prettier is pinned in `package-lock.json`. Install the Go tools at those versions, or run them through [mise](https://mise.jdx.dev/):
 
 ```bash
-mise install golangci-lint@2.15.0 goreleaser@2.18.3
+mise install golangci-lint@2.15.0 goreleaser@2.20.3
 mise exec golangci-lint@2.15.0 -- golangci-lint fmt
 mise exec golangci-lint@2.15.0 -- golangci-lint run ./...
 ```
@@ -47,7 +47,7 @@ go vet ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 npm run format:check
 npm run test:extensions
-mise exec goreleaser@2.18.3 -- goreleaser check
+mise exec goreleaser@2.20.3 -- goreleaser check
 ```
 
 Run fixture generator tests from the submodule:
@@ -84,7 +84,7 @@ go test -race ./internal/mcp ./cmd/maxminddb-mcp
 go build -o bin/maxminddb-mcp ./cmd/maxminddb-mcp
 ./bin/maxminddb-mcp --help
 ./bin/maxminddb-mcp --version
-mise exec goreleaser@2.18.3 -- goreleaser build --snapshot --clean
+mise exec goreleaser@2.20.3 -- goreleaser build --snapshot --clean
 ```
 
 The Dockerfile consumes a prebuilt Linux binary named `maxminddb-mcp` under `linux/amd64/` or `linux/arm64/` in its build context. Build in a temporary directory to avoid sending config files or credentials to Docker:
@@ -100,7 +100,7 @@ docker build --platform linux/amd64 --build-arg TARGETPLATFORM=linux/amd64 -t ma
 GoReleaser uses `dockers_v2` and Docker Buildx to build the multi-platform image and retain the `-amd64` and `-arm64` tags. Snapshot builds load images locally without publishing and add a platform suffix to each tag. They do not update `latest` tags. To test release packaging and images:
 
 ```bash
-mise exec goreleaser@2.18.3 -- goreleaser release --snapshot --clean
+mise exec goreleaser@2.20.3 -- goreleaser release --snapshot --clean
 node scripts/package-universal-extension.mjs "$(jq -r .version dist/metadata.json)" dist
 npx --yes --package @anthropic-ai/claude-code@2.1.302 -c 'node scripts/test-claude-plugin.mjs dist/maxminddb-claude-plugin.zip'
 ```
