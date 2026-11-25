@@ -62,7 +62,7 @@ func TestNewWithUpdater(t *testing.T) {
 	cfg.Mode = maxmindMode
 	cfg.MaxMind = config.MaxMindConfig{
 		AccountID:   999999,
-		LicenseKey:  "test_key",
+		LicenseKey:  "abcdefghijklmnopqrstuvwxyz0123456789_mmk",
 		Editions:    []string{"GeoLite2-City"},
 		DatabaseDir: t.TempDir(),
 		Endpoint:    "https://updates.maxmind.com",
@@ -232,7 +232,7 @@ func TestRegisterTools(t *testing.T) {
 	cfg.Mode = maxmindMode
 	cfg.MaxMind = config.MaxMindConfig{
 		AccountID:   999999,
-		LicenseKey:  "test_key",
+		LicenseKey:  "abcdefghijklmnopqrstuvwxyz0123456789_mmk",
 		Editions:    []string{"GeoLite2-City"},
 		DatabaseDir: t.TempDir(),
 		Endpoint:    "https://updates.maxmind.com",
@@ -352,7 +352,7 @@ func TestServerWithDifferentModes(t *testing.T) {
 	cfg.Mode = maxmindMode
 	cfg.MaxMind = config.MaxMindConfig{
 		AccountID:   999999,
-		LicenseKey:  "test_key",
+		LicenseKey:  "abcdefghijklmnopqrstuvwxyz0123456789_mmk",
 		Editions:    []string{"GeoLite2-City"},
 		DatabaseDir: t.TempDir(),
 		Endpoint:    "https://updates.maxmind.com",

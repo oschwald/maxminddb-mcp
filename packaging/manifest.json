@@ -58,7 +58,7 @@
     "license_key": {
       "type": "string",
       "title": "MaxMind license key",
-      "description": "Required when downloads are on. Claude stores this value as a sensitive setting. Leave blank when using existing files.",
+      "description": "Required when downloads are on. Use a modern key ending in _mmk. Claude stores this value as a sensitive setting. Leave blank when using existing files.",
       "sensitive": true,
       "default": ""
     },

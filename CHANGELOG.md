@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** Require a modern MaxMind license key for downloads. Configuration now fails to load with a legacy key, such as a 12-character key from before 2023, including one read from `GeoIP.conf`. Modern keys are at least 40 characters and end in `_mmk`. If yours does not, create a new license key in your MaxMind account.
 - Release the least recently used completed query when the 128-iterator limit is reached, so finished `lookup_network` and `lookup_range` queries no longer block new ones until they expire.
 - Build with Go 1.27.4, which fixes standard library vulnerabilities in `net/http` and `crypto/x509`.
 - Publish GitHub releases only after every asset is uploaded. The `releases/latest/download` links for `maxminddb.mcpb` and `claude-marketplace.json` no longer return 404 while a release finishes, and `checksums.txt` is final when it first appears. The Homebrew cask updates after the release is public.
@@ -17,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Compare uint128 fields in filters. Numeric equality, `in`, and ordering filters on these fields never matched, and `not_equals` and `not_in` always matched, so network, range, and summary tools dropped or kept records incorrectly.
 - `lookup_ip` and `lookup_ips` without `database` no longer fail when one database fails. That database's entry reports the error and the others still answer. IPv6 addresses in IPv4-only databases return `found: false`, and IPv4-mapped IPv6 addresses are looked up as IPv4 there.
-- Omit request URLs, and response bodies from redirect targets, from MaxMind download errors so a failed redirect cannot expose a signed URL in tool results, `list_databases` or logs. License key redaction no longer alters unrelated words when the configured key is shorter than a real key.
+- Omit request URLs, and response bodies from redirect targets, from MaxMind download errors so a failed redirect cannot expose a signed URL in tool results, `list_databases` or logs.
 - Load databases from a symlinked database directory. Previously the server started with no databases.
 - Skip unreadable subdirectories, such as a root-owned `lost+found`, instead of failing startup.
 - Unload databases in a subdirectory that is moved out of the database directory or deleted.

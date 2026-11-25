@@ -117,8 +117,8 @@ func (c *Config) Validate() error {
 		if c.MaxMind.AccountID <= 0 {
 			return errors.New("maxmind mode requires account_id")
 		}
-		if c.MaxMind.LicenseKey == "" {
-			return errors.New("maxmind mode requires license_key")
+		if err := validateLicenseKey(c.MaxMind.LicenseKey); err != nil {
+			return err
 		}
 		if len(c.MaxMind.Editions) == 0 {
 			return errors.New("maxmind mode requires at least one edition")
@@ -134,6 +134,37 @@ func (c *Config) Validate() error {
 		// No additional validation for other modes
 	}
 
+	return nil
+}
+
+// minLicenseKeyLength is the length of a modern MaxMind license key.
+// MaxMind may issue longer keys in the future.
+const minLicenseKeyLength = 40
+
+// licenseKeySuffix ends every modern MaxMind license key.
+const licenseKeySuffix = "_mmk"
+
+// validateLicenseKey rejects legacy MaxMind license keys. The error never
+// includes the key itself.
+func validateLicenseKey(key string) error {
+	if key == "" {
+		return errors.New("maxmind mode requires license_key")
+	}
+	if strings.TrimSpace(key) != key {
+		return errors.New("license_key has leading or trailing whitespace")
+	}
+	valid := len(key) >= minLicenseKeyLength && strings.HasSuffix(key, licenseKeySuffix)
+	for i := 0; valid && i < len(key); i++ {
+		b := key[i]
+		valid = b == '_' || '0' <= b && b <= '9' || 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z'
+	}
+	if !valid {
+		return errors.New(
+			"license_key is not a modern MaxMind license key; " +
+				"create a new license key in your MaxMind account " +
+				"(modern keys are at least 40 characters and end in _mmk)",
+		)
+	}
 	return nil
 }
 

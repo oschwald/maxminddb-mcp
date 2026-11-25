@@ -22,7 +22,7 @@ func TestInitializeWhileDownloadIsBlocked(t *testing.T) {
 	}))
 	defer endpoint.Close()
 	cfg := config.DefaultConfig()
-	cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
+	cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "abcdefghijklmnopqrstuvwxyz0123456789_mmk"
 	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
 	cfg.MaxMind.DatabaseDir, cfg.MaxMind.Endpoint = t.TempDir(), endpoint.URL
 	if err := cfg.Validate(); err != nil {

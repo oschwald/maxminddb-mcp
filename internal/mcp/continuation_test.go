@@ -39,7 +39,7 @@ func testUpdatingServer(t *testing.T, handler http.Handler) *Server {
 	server := testServer(t)
 	cfg := server.config
 	cfg.Mode = config.ModeMaxMind
-	cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
+	cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "abcdefghijklmnopqrstuvwxyz0123456789_mmk"
 	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
 	cfg.MaxMind.DatabaseDir = t.TempDir()
 	cfg.MaxMind.Endpoint = endpoint.URL
@@ -315,7 +315,7 @@ func TestPartialUpdateFailure(t *testing.T) {
 	cfg := server.config
 	cfg.Mode = "maxmind"
 	cfg.MaxMind.AccountID = 1
-	cfg.MaxMind.LicenseKey = "test"
+	cfg.MaxMind.LicenseKey = "abcdefghijklmnopqrstuvwxyz0123456789_mmk"
 	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
 	cfg.MaxMind.Endpoint = endpoint.URL
 	cfg.MaxMind.DatabaseDir = t.TempDir()

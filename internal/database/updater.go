@@ -79,44 +79,15 @@ func (u *Updater) finishUpdate(results []UpdateResult, err error) {
 	u.setStatus(status)
 }
 
-// minLicenseKeyLength is the length of the shortest MaxMind license key format.
-const minLicenseKeyLength = 12
-
 // redact removes the license key from a message as a second check after
-// downloadError. A value shorter than a real key, such as a test key, is
-// replaced only as a whole word so that it cannot corrupt unrelated text.
+// downloadError. Config validation guarantees a modern key, which is long
+// enough that replacing it cannot corrupt unrelated text.
 func (u *Updater) redact(message string) string {
 	key := u.config.MaxMind.LicenseKey
 	if key == "" {
 		return message
 	}
-	if len(key) >= minLicenseKeyLength {
-		return strings.ReplaceAll(message, key, "[redacted]")
-	}
-	var redacted strings.Builder
-	written := 0
-	for from := 0; ; {
-		i := strings.Index(message[from:], key)
-		if i < 0 {
-			break
-		}
-		i += from
-		end := i + len(key)
-		if (isWordByte(key[0]) && i > 0 && isWordByte(message[i-1])) ||
-			(isWordByte(key[len(key)-1]) && end < len(message) && isWordByte(message[end])) {
-			from = i + 1
-			continue
-		}
-		redacted.WriteString(message[written:i])
-		redacted.WriteString("[redacted]")
-		written, from = end, end
-	}
-	redacted.WriteString(message[written:])
-	return redacted.String()
-}
-
-func isWordByte(b byte) bool {
-	return b == '_' || '0' <= b && b <= '9' || 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z'
+	return strings.ReplaceAll(message, key, "[redacted]")
 }
 
 // quotedValue matches a Go-quoted string, such as the Location header that

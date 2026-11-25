@@ -37,7 +37,7 @@ func testUpdater(t *testing.T, handler http.Handler) *Updater {
 	t.Cleanup(func() { _ = manager.Close() })
 	cfg := config.DefaultConfig()
 	cfg.MaxMind.AccountID = 1
-	cfg.MaxMind.LicenseKey = "test"
+	cfg.MaxMind.LicenseKey = "abcdefghijklmnopqrstuvwxyz0123456789_mmk"
 	cfg.MaxMind.Editions = []string{"GeoLite2-ASN"}
 	cfg.MaxMind.DatabaseDir = t.TempDir()
 	cfg.MaxMind.Endpoint = endpoint.URL
@@ -314,7 +314,8 @@ func TestUpdateAcrossProcesses(t *testing.T) {
 		}
 		defer func() { _ = manager.Close() }()
 		cfg := config.DefaultConfig()
-		cfg.MaxMind.AccountID, cfg.MaxMind.LicenseKey = 1, "test"
+		cfg.MaxMind.AccountID = 1
+		cfg.MaxMind.LicenseKey = "abcdefghijklmnopqrstuvwxyz0123456789_mmk"
 		cfg.MaxMind.DatabaseDir = dir
 		cfg.MaxMind.Endpoint = os.Getenv("MAXMINDDB_MCP_TEST_UPDATE_ENDPOINT")
 		updater, err := NewUpdater(cfg, manager)
@@ -570,15 +571,13 @@ func TestDownloadErrorKeepsDirectResponseBody(t *testing.T) {
 }
 
 func TestRedactLicenseKey(t *testing.T) {
+	const key = "abcdefghijklmnopqrstuvwxyz0123456789_mmk"
 	for _, test := range []struct {
 		key, message, want string
 	}{
-		{"x", "context canceled", "context canceled"},
-		{"x", "invalid license key: x", "invalid license key: [redacted]"},
-		{"x", "x, xx, x_x, x", "[redacted], xx, x_x, [redacted]"},
-		{"key", "key=key&keys=key1", "[redacted]=[redacted]&keys=key1"},
-		{"-ab", "x-ab, -abc", "x[redacted], -abc"},
-		{"abcdef_0123456789", "url=/abcdef_0123456789suffix", "url=/[redacted]suffix"},
+		{key, "context canceled", "context canceled"},
+		{key, "invalid license key: " + key, "invalid license key: [redacted]"},
+		{key, "url=/" + key + "suffix&k=" + key, "url=/[redacted]suffix&k=[redacted]"},
 		{"", "unchanged", "unchanged"},
 	} {
 		updater := &Updater{config: config.DefaultConfig()}

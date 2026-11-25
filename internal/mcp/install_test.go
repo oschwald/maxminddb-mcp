@@ -40,7 +40,7 @@ func TestInstallTools(t *testing.T) {
 	sum := md5.Sum(data) //nolint:gosec // The MaxMind update API uses MD5.
 	server := testUpdatingServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		account, key, ok := r.BasicAuth()
-		if !ok || account != "1" || key != "test" {
+		if !ok || account != "1" || key != "abcdefghijklmnopqrstuvwxyz0123456789_mmk" {
 			t.Error("edition request did not use configured credentials")
 		}
 		if strings.HasSuffix(r.URL.Path, "/metadata") {

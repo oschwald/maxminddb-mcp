@@ -48,7 +48,7 @@ func TestEnvironmentDownloads(t *testing.T) {
 	environmentHome(t)
 	t.Setenv("MAXMINDDB_MCP_DOWNLOAD_ENABLED", "true")
 	t.Setenv("MAXMINDDB_MCP_ACCOUNT_ID", "123")
-	t.Setenv("MAXMINDDB_MCP_LICENSE_KEY", "test-secret")
+	t.Setenv("MAXMINDDB_MCP_LICENSE_KEY", "testsecrettestsecrettestsecret0123456_mmk")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestEnvironmentDownloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.Mode != ModeMaxMind || !cfg.AutoUpdate || cfg.MaxMind.AccountID != 123 ||
-		cfg.MaxMind.LicenseKey != "test-secret" ||
+		cfg.MaxMind.LicenseKey != "testsecrettestsecrettestsecret0123456_mmk" ||
 		cfg.MaxMind.DatabaseDir != filepath.Join(cache, "maxminddb-mcp", "databases") ||
 		!reflect.DeepEqual(cfg.MaxMind.Editions, []string{"GeoLite2-City", "GeoLite2-ASN"}) {
 		t.Fatal("download settings or defaults were not applied")
@@ -90,6 +90,7 @@ func TestInvalidEnvironment(t *testing.T) {
 		{"invalid account", "ACCOUNT_ID", "secret-value", "account ID"},
 		{"negative account", "ACCOUNT_ID", "-1", "account ID"},
 		{"missing key", "LICENSE_KEY", "  ", "license key"},
+		{"legacy key", "LICENSE_KEY", "secret-value", "modern MaxMind license key"},
 		{"empty editions", "EDITIONS", ", ,", "at least one edition"},
 		{"edition path", "EDITIONS", "../secret-value", "edition IDs"},
 		{"Windows edition path", "EDITIONS", `..\secret-value`, "edition IDs"},
@@ -100,7 +101,7 @@ func TestInvalidEnvironment(t *testing.T) {
 			environmentHome(t)
 			t.Setenv("MAXMINDDB_MCP_DOWNLOAD_ENABLED", "true")
 			t.Setenv("MAXMINDDB_MCP_ACCOUNT_ID", "123")
-			t.Setenv("MAXMINDDB_MCP_LICENSE_KEY", "secret-value")
+			t.Setenv("MAXMINDDB_MCP_LICENSE_KEY", "secretvaluesecretvaluesecretvalue012_mmk")
 			t.Setenv("MAXMINDDB_MCP_"+tc.field, tc.value)
 			_, err := Load()
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
