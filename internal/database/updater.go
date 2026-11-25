@@ -9,11 +9,15 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/maxmind/geoipupdate/v8/client"
@@ -75,11 +79,84 @@ func (u *Updater) finishUpdate(results []UpdateResult, err error) {
 	u.setStatus(status)
 }
 
+// minLicenseKeyLength is the length of the shortest MaxMind license key format.
+const minLicenseKeyLength = 12
+
+// redact removes the license key from a message as a second check after
+// downloadError. A value shorter than a real key, such as a test key, is
+// replaced only as a whole word so that it cannot corrupt unrelated text.
 func (u *Updater) redact(message string) string {
-	if key := u.config.MaxMind.LicenseKey; key != "" {
+	key := u.config.MaxMind.LicenseKey
+	if key == "" {
+		return message
+	}
+	if len(key) >= minLicenseKeyLength {
 		return strings.ReplaceAll(message, key, "[redacted]")
 	}
+	var redacted strings.Builder
+	written := 0
+	for from := 0; ; {
+		i := strings.Index(message[from:], key)
+		if i < 0 {
+			break
+		}
+		i += from
+		end := i + len(key)
+		if (isWordByte(key[0]) && i > 0 && isWordByte(message[i-1])) ||
+			(isWordByte(key[len(key)-1]) && end < len(message) && isWordByte(message[end])) {
+			from = i + 1
+			continue
+		}
+		redacted.WriteString(message[written:i])
+		redacted.WriteString("[redacted]")
+		written, from = end, end
+	}
+	redacted.WriteString(message[written:])
+	return redacted.String()
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' || '0' <= b && b <= '9' || 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z'
+}
+
+// quotedValue matches a Go-quoted string, such as the Location header that
+// net/http quotes when it cannot parse a redirect.
+var quotedValue = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
+
+// downloadError describes a failed update request without its URL.
+// A redirect target can be a signed URL with credentials in its query.
+// The response body of a failed redirect target can repeat that URL, so
+// only its status code is kept.
+func downloadError(err error, redirected bool) string {
+	message := err.Error()
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Err != nil {
+		inner := quotedValue.ReplaceAllString(urlErr.Err.Error(), `"[redacted]"`)
+		message = strings.ReplaceAll(message, urlErr.Error(), inner)
+	}
+	var httpErr client.HTTPError
+	if redirected && errors.As(err, &httpErr) {
+		message = strings.ReplaceAll(
+			message,
+			httpErr.Error(),
+			fmt.Sprintf("received HTTP status code: %d", httpErr.StatusCode),
+		)
+	}
 	return message
+}
+
+type redirectKey struct{}
+
+// noteRedirect records redirects for downloadError. It keeps the default
+// limit of 10 redirects.
+func noteRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if redirected, ok := req.Context().Value(redirectKey{}).(*atomic.Bool); ok {
+		redirected.Store(true)
+	}
+	return nil
 }
 
 // NewUpdater creates a new database updater.
@@ -93,6 +170,7 @@ func NewUpdater(cfg *config.Config, manager *Manager) (*Updater, error) {
 		cfg.MaxMind.AccountID,
 		cfg.MaxMind.LicenseKey,
 		client.WithEndpoint(cfg.MaxMind.Endpoint),
+		client.WithHTTPClient(&http.Client{CheckRedirect: noteRedirect}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MaxMind client: %w", err)
@@ -242,9 +320,14 @@ func (u *Updater) updateDatabase(
 	}
 
 	// Attempt to download
-	response, err := u.client.Download(ctx, edition, currentMD5)
+	var redirected atomic.Bool
+	response, err := u.client.Download(
+		context.WithValue(ctx, redirectKey{}, &redirected),
+		edition,
+		currentMD5,
+	)
 	if err != nil {
-		result.Error = fmt.Sprintf("download failed: %v", err)
+		result.Error = "download failed: " + downloadError(err, redirected.Load())
 		return result
 	}
 	defer func() { _ = response.Reader.Close() }()
