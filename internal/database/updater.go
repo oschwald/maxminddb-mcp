@@ -141,7 +141,10 @@ func NewUpdater(cfg *config.Config, manager *Manager) (*Updater, error) {
 		cfg.MaxMind.AccountID,
 		cfg.MaxMind.LicenseKey,
 		client.WithEndpoint(cfg.MaxMind.Endpoint),
-		client.WithHTTPClient(&http.Client{CheckRedirect: noteRedirect}),
+		client.WithHTTPClient(&http.Client{
+			Transport:     newDownloadTransport(false),
+			CheckRedirect: noteRedirect,
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MaxMind client: %w", err)
@@ -326,6 +329,10 @@ func (u *Updater) updateDatabase(
 	}
 	size, copyErr := io.Copy(writer, contextReader{ctx: ctx, reader: response.Reader})
 	closeErr := file.Close()
+	if errors.Is(copyErr, errDownloadStalled) {
+		result.Error = fmt.Sprintf("download failed: %v", copyErr)
+		return result
+	}
 	if err := errors.Join(copyErr, closeErr); err != nil {
 		result.Error = fmt.Sprintf("failed to write database: %v", err)
 		return result
