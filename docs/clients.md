@@ -22,7 +22,7 @@ Install and configure the server through Claude Desktop. You do not need Go, a t
 1. [Download the latest MCPB](https://github.com/oschwald/maxminddb-mcp/releases/latest/download/maxminddb.mcpb). This single file includes native executables for Mac Intel and Apple silicon, Linux x64 and ARM64, and Windows x64. It selects the executable when it starts. No separate runtime is required. Smaller packages for individual platforms remain available on [GitHub Releases](https://github.com/oschwald/maxminddb-mcp/releases).
 2. In Claude Desktop, open **Settings → Extensions → Advanced settings → Install Extension** and select the file.
 3. Configure one of these choices in the extension settings:
-   - **Download databases:** Leave **Download and update MaxMind databases** enabled. Enter your MaxMind account ID and license key. The default editions are `GeoLite2-City` and `GeoLite2-ASN`. Change these for other editions available to your account. Leave **Database folder** blank to use the application cache, or select a writable folder.
+   - **Download databases:** Leave **Download and update MaxMind databases** enabled. Enter your MaxMind account ID and a modern license key ending in `_mmk`. The default editions are `GeoLite2-City` and `GeoLite2-ASN`. Change these for other editions available to your account. Leave **Database folder** blank to use the application cache, or select a writable folder.
    - **Use existing files:** Turn off downloads and select the **Database folder** containing your MMDB files. Account settings are ignored in this mode.
 4. Enable the extension and ask: "Using MaxMindDB, list my databases and look up 8.8.8.8."
 

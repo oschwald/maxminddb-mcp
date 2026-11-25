@@ -19,6 +19,7 @@ ASN data describes network ownership, not the identity of a person using an addr
 ## What you need
 
 Provide either existing `.mmdb` files or a [MaxMind account ID and license key](https://www.maxmind.com/en/accounts/current/license-key) with access to the editions you want.
+Downloads require a modern license key ending in `_mmk`.
 Databases and credentials are not bundled.
 
 The server runs on your computer and requires a client that supports local MCP servers.

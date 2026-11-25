@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// secretKey is a modern-format license key that must never appear in errors.
+const secretKey = "testsecrettestsecrettestsecret0123456_mmk"
+
 func TestDownloadStatusAndRecovery(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/test-data/GeoLite2-ASN-Test.mmdb")
 	if err != nil {
@@ -31,12 +34,12 @@ func TestDownloadStatusAndRecovery(t *testing.T) {
 			case <-release:
 			case <-r.Context().Done():
 			}
-			http.Error(w, "invalid credential: test-secret", http.StatusUnauthorized)
+			http.Error(w, "invalid credential: "+secretKey, http.StatusUnauthorized)
 			return
 		}
 		handler.ServeHTTP(w, r)
 	}))
-	updater.config.MaxMind.LicenseKey = "test-secret"
+	updater.config.MaxMind.LicenseKey = secretKey
 	if updater.Status().State != "pending" {
 		t.Fatal("initial download was not pending")
 	}
@@ -64,7 +67,7 @@ func TestDownloadStatusAndRecovery(t *testing.T) {
 	if status.State != "failed" || len(status.Results) != 1 || status.Results[0].Error == "" {
 		t.Fatalf("failed download status: %+v", status)
 	}
-	if strings.Contains(status.Results[0].Error, "test-secret") {
+	if strings.Contains(status.Results[0].Error, secretKey) {
 		t.Fatal("status exposed the license key")
 	}
 	status.Results[0].Error = "modified"

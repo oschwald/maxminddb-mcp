@@ -16,7 +16,7 @@ func TestLoadGeoIPFromTOML(t *testing.T) {
 	if err := os.WriteFile(
 		geoip,
 		[]byte(
-			"AccountID\t123\nLicenseKey test\nEditionIDs GeoLite2-ASN\nDatabaseDirectory ~/geoip\nHost updates.maxmind.com\n",
+			"AccountID\t123\nLicenseKey abcdefghijklmnopqrstuvwxyz0123456789_mmk\nEditionIDs GeoLite2-ASN\nDatabaseDirectory ~/geoip\nHost updates.maxmind.com\n",
 		),
 		0o600,
 	); err != nil {
@@ -40,7 +40,8 @@ func TestLoadGeoIPFromTOML(t *testing.T) {
 		if override != "" {
 			expectedDir = filepath.Join(home, "override")
 		}
-		if cfg.MaxMind.AccountID != 123 || cfg.MaxMind.LicenseKey != "test" ||
+		if cfg.MaxMind.AccountID != 123 ||
+			cfg.MaxMind.LicenseKey != "abcdefghijklmnopqrstuvwxyz0123456789_mmk" ||
 			len(cfg.MaxMind.Editions) != 1 ||
 			cfg.MaxMind.Editions[0] != "GeoLite2-ASN" ||
 			cfg.MaxMind.DatabaseDir != expectedDir ||

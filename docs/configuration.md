@@ -25,11 +25,13 @@ iterator_cleanup_interval = "1m"
 
 [maxmind]
 account_id = 123456
-license_key = "your_license_key_here"
+license_key = "your_license_key_here_mmk"
 editions = ["GeoLite2-City", "GeoLite2-ASN"]
 database_dir = "~/.cache/maxminddb-mcp/databases"
 # endpoint = "https://updates.maxmind.com"
 ```
+
+Downloads require a modern MaxMind license key, which is at least 40 characters and ends in `_mmk`. Legacy keys are rejected when the configuration loads, including one read from `GeoIP.conf`. Create a new key in your MaxMind account if yours is older.
 
 Keep files containing credentials readable only by their owner, for example with `chmod 600 config.toml`.
 
@@ -66,7 +68,7 @@ The Desktop extension passes these environment settings to the executable. Other
 | `MAXMINDDB_MCP_DOWNLOAD_ENABLED` | `true` for MaxMind downloads, `false` for existing MMDB files                                                                       |
 | `MAXMINDDB_MCP_DATABASE_DIR`     | One database folder. Required for existing files. Downloads default to the OS user cache directory under `maxminddb-mcp/databases`. |
 | `MAXMINDDB_MCP_ACCOUNT_ID`       | Positive account ID, required for downloads                                                                                         |
-| `MAXMINDDB_MCP_LICENSE_KEY`      | License key, required for downloads                                                                                                 |
+| `MAXMINDDB_MCP_LICENSE_KEY`      | Modern license key ending in `_mmk`, required for downloads                                                                         |
 | `MAXMINDDB_MCP_EDITIONS`         | Comma- or whitespace-separated editions. Defaults to `GeoLite2-City,GeoLite2-ASN`.                                                  |
 
 Setting `MAXMINDDB_MCP_DOWNLOAD_ENABLED` selects this configuration source and skips automatic config-file discovery. Do not also set a nonempty `MAXMINDDB_MCP_CONFIG`. Download mode checks for updates every 24 hours. Local-file mode does not run MaxMind downloads, but explicit URL imports through `install_database` are available. Use a TOML file for multiple folders or other advanced settings.

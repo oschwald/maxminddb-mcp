@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -50,7 +51,7 @@ func TestConfigValidation(t *testing.T) {
 				IteratorCleanupInterval: "1m",
 				MaxMind: MaxMindConfig{
 					AccountID:   12345,
-					LicenseKey:  "test-key",
+					LicenseKey:  "abcdefghijklmnopqrstuvwxyz0123456789_mmk",
 					Editions:    []string{"GeoLite2-City"},
 					DatabaseDir: "/tmp/db",
 				},
@@ -71,7 +72,7 @@ func TestConfigValidation(t *testing.T) {
 				IteratorTTL:             "10m",
 				IteratorCleanupInterval: "1m",
 				MaxMind: MaxMindConfig{
-					LicenseKey:  "test-key",
+					LicenseKey:  "abcdefghijklmnopqrstuvwxyz0123456789_mmk",
 					Editions:    []string{"GeoLite2-City"},
 					DatabaseDir: "/tmp/db",
 				},
@@ -230,5 +231,37 @@ func TestConfigParseDurations(t *testing.T) {
 			expectedCleanup,
 			cfg.IteratorCleanupIntervalDuration,
 		)
+	}
+}
+
+func TestValidateLicenseKey(t *testing.T) {
+	for _, test := range []struct {
+		name, key string
+		valid     bool
+	}{
+		{"modern", "abcdefghijklmnopqrstuvwxyz0123456789_mmk", true},
+		{"modern with underscores", "ABC_def_0123456789_ABCDEFGHIJKLMNOPQ_mmk", true},
+		{"longer than today", "abcdefghijklmnopqrstuvwxyz0123456789ABCD_mmk", true},
+		{"legacy", "AbCdEf123456", false},
+		{"short with suffix", "abcdefghij_mmk", false},
+		{"missing suffix", "abcdefghijklmnopqrstuvwxyz0123456789ABCD", false},
+		{"invalid character", "abcdefghijklmnopqrstuvwxyz-123456789_mmk", false},
+		{"surrounding space", " abcdefghijklmnopqrstuvwxyz0123456789_mmk", false},
+		{"trailing newline", "abcdefghijklmnopqrstuvwxyz0123456789_mmk\n", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateLicenseKey(test.key)
+			if test.valid != (err == nil) {
+				t.Fatalf("validateLicenseKey(%q) = %v, want valid %v", test.key, err, test.valid)
+			}
+			if err != nil {
+				if !strings.Contains(err.Error(), "license_key") {
+					t.Errorf("unclear error: %v", err)
+				}
+				if strings.Contains(err.Error(), test.key) {
+					t.Error("error exposed the license key")
+				}
+			}
+		})
 	}
 }
