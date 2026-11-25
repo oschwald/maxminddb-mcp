@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compare uint128 fields in filters. Numeric equality, `in`, and ordering filters on these fields never matched, and `not_equals` and `not_in` always matched, so network, range, and summary tools dropped or kept records incorrectly.
 - `lookup_ip` and `lookup_ips` without `database` no longer fail when one database fails. That database's entry reports the error and the others still answer. IPv6 addresses in IPv4-only databases return `found: false`, and IPv4-mapped IPv6 addresses are looked up as IPv4 there.
 - Omit request URLs, and response bodies from redirect targets, from MaxMind download errors so a failed redirect cannot expose a signed URL in tool results, `list_databases` or logs. License key redaction no longer alters unrelated words when the configured key is shorter than a real key.
+- Load databases from a symlinked database directory. Previously the server started with no databases.
+- Skip unreadable subdirectories, such as a root-owned `lost+found`, instead of failing startup.
+- Unload databases in a subdirectory that is moved out of the database directory or deleted.
 
 ## [0.4.0] - 2026-10-18
 
