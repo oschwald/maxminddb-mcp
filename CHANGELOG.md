@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Omit request URLs, and response bodies from redirect targets, from MaxMind download errors so a failed redirect cannot expose a signed URL in tool results, `list_databases` or logs.
 - Load databases from a symlinked database directory. Previously the server started with no databases.
 - Skip unreadable subdirectories, such as a root-owned `lost+found`, instead of failing startup.
+- Load a symlinked `.mmdb` file in the database directory with its target's file information. Previously `list_databases` showed the symlink's own size, and every file event for that database reloaded it even when nothing had changed. Broken symlinks are skipped with a warning, and directories, named pipes, sockets, and devices named `*.mmdb` are no longer opened. Opening a named pipe could hang the server.
 - Unload databases in a subdirectory that is moved out of the database directory or deleted.
 - Prerelease tags no longer move the `latest`, `latest-amd64`, and `latest-arm64` container tags. Prerelease images are published only under their version tags.
 - Keep the permission bits of a database file when a MaxMind update or URL install replaces it. Before, every replacement changed the file to mode 0600, so other users and daemons that could read it lost access. New database files are created with mode 0644, less the umask, as geoipupdate does.

@@ -224,3 +224,79 @@ func TestRemoveConfiguredRootKeepsDatabases(t *testing.T) {
 		t.Fatal("an event for the configured directory unloaded its databases")
 	}
 }
+
+func TestLoadDirectorySymlinkedDatabase(t *testing.T) {
+	targetDir := resolvedTempDir(t)
+	target := copyTestDB(t, targetDir, "target.mmdb")
+	dir := resolvedTempDir(t)
+	link := filepath.Join(dir, "linked.mmdb")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	targetInfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	if err := manager.LoadDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+	info, ok := manager.GetDatabase("linked.mmdb")
+	if !ok {
+		t.Fatal("symlinked database was not loaded")
+	}
+	if info.Size != targetInfo.Size() {
+		t.Errorf("size = %d, want the target's size %d", info.Size, targetInfo.Size())
+	}
+	if info.Path != link {
+		t.Errorf("path = %s, want %s", info.Path, link)
+	}
+
+	// A file event for the unchanged link must not reload the database.
+	if err := manager.LoadDatabase(link); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, ok := manager.GetDatabase("linked.mmdb")
+	if !ok {
+		t.Fatal("symlinked database was unloaded")
+	}
+	if reloaded.Generation != info.Generation {
+		t.Error("unchanged symlinked database was reloaded")
+	}
+}
+
+func TestLoadDirectorySkipsBrokenSymlinksAndDirectories(t *testing.T) {
+	dir := resolvedTempDir(t)
+	copyTestDB(t, dir, "good.mmdb")
+	if err := os.Symlink(
+		filepath.Join(dir, "missing.mmdb"),
+		filepath.Join(dir, "broken.mmdb"),
+	); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(dir, "dir.mmdb")); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	if err := manager.LoadDirectory(dir); err != nil {
+		t.Fatalf("broken symlink failed the load: %v", err)
+	}
+	if _, ok := manager.GetDatabase("good.mmdb"); !ok {
+		t.Fatal("database beside the broken symlink was not loaded")
+	}
+	for _, name := range []string{"broken.mmdb", "dir.mmdb"} {
+		if _, ok := manager.GetDatabase(name); ok {
+			t.Errorf("%s was loaded", name)
+		}
+	}
+}
