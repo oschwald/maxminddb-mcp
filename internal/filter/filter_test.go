@@ -621,6 +621,19 @@ func TestNumericEquality(t *testing.T) {
 		{"NaN", math.NaN(), math.NaN(), false},
 		{"same infinity", math.Inf(1), math.Inf(1), true},
 		{"mixed infinity widths", float32(math.Inf(1)), math.Inf(1), false},
+		{"float32 printed decimal", float32(1.1), 1.1, true},
+		{"float32 negative decimal", float32(-0.3), -0.3, true},
+		{"float32 nearby double", float32(1.1), math.Nextafter(1.1, 2), true},
+		{"float32 binary value", float32(1.1), float64(float32(1.1)), true},
+		{"float32 adjacent value", float32(1.1), float64(math.Nextafter32(1.1, 2)), false},
+		{"float32 unprinted midpoint", float32(1.1), float32Midpoint(1.1), false},
+		{"float32 double rounding", math.Float32frombits(0x15ae_43fd), 7.038531e-26, true},
+		{"float32 midpoint neighbor", math.Float32frombits(0x15ae_43fe), 7.038531e-26, false},
+		{"float32 integer", float32(16777216), uint64(16777216), true},
+		{"float32 maximum", float32(math.MaxFloat32), 3.4028235e38, true},
+		{"float32 beyond range", float32(math.MaxFloat32), 1e39, false},
+		{"float32 infinity, large value", float32(math.Inf(1)), 1e39, false},
+		{"float64 field stays exact", 1.1, float64(float32(1.1)), false},
 		{"fraction", uint64(42), 42.5, false},
 		{"negative and unsigned", uint64(42), float64(-42), false},
 		{"large integer", uint64(1<<53 + 1), float64(1 << 53), false},
@@ -687,6 +700,17 @@ func TestNumericOrdering(t *testing.T) {
 		{"float zero signs", math.Copysign(0, -1), float32(0), 0, true},
 		{"mixed infinity widths", float32(math.Inf(1)), math.Inf(1), 0, true},
 		{"float NaN", math.NaN(), float32(1), 0, false},
+		{"float32 printed decimal", float32(1.1), 1.1, 0, true},
+		{"float32 binary value", float32(1.1), float64(float32(1.1)), 0, true},
+		{"float32 adjacent value", float32(1.1), float64(math.Nextafter32(1.1, 2)), -1, true},
+		{"float32 unprinted midpoint", float32(1.1), float32Midpoint(1.1), -1, true},
+		{"float32 double rounding", math.Float32frombits(0x15ae_43fd), 7.038531e-26, 0, true},
+		{"float32 midpoint neighbor", math.Float32frombits(0x15ae_43fe), 7.038531e-26, 1, true},
+		{"float32 integer", float32(16777216), uint64(16777217), -1, true},
+		{"float32 beyond range", float32(math.MaxFloat32), 1e39, -1, true},
+		{"float32 infinity, large value", float32(math.Inf(1)), 1e39, 1, true},
+		{"float32 numeric string", float32(1.1), "1.1", 0, true},
+		{"float64 field stays exact", 1.1, float64(float32(1.1)), -1, true},
 		{"fraction", uint64(42), 42.5, -1, true},
 		{"large integer", uint64(1<<53 + 1), float64(1 << 53), 1, true},
 		{"uint64 boundary", uint64(1<<64 - 1), float64(1 << 64), -1, true},
@@ -735,4 +759,10 @@ func TestNumericOrdering(t *testing.T) {
 			}
 		})
 	}
+}
+
+// float32Midpoint returns the float64 halfway between value and the next larger
+// float32.
+func float32Midpoint(value float32) float64 {
+	return (float64(value) + float64(math.Nextafter32(value, float32(math.Inf(1))))) / 2
 }

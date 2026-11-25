@@ -117,7 +117,7 @@ Fields use dot notation, such as `country.iso_code`. Operators and aliases use l
 | `less_than`, `less_than_or_equal` (`lt`, `lte`)       | A number                             |
 | `exists`                                              | A boolean                            |
 
-Numeric equality and ordering compare decoded MMDB integers, including uint128 values, and JSON numbers without rounding integers to floating point. JSON clients can still lose precision for integers above 2⁵³ before sending them. Ordering also accepts numeric strings through floating-point conversion.
+Numeric equality and ordering compare decoded MMDB integers, including uint128 values, and JSON numbers without rounding integers to floating point. JSON clients can still lose precision for integers above 2⁵³ before sending them. MMDB `float` fields compare at float32 precision, so a number copied from a result matches its record. Nearby numbers that round to the same float32 also match. `double` fields compare exactly. Ordering also accepts numeric strings through floating-point conversion.
 
 ## `list_databases`
 
