@@ -297,8 +297,30 @@ func (m *Manager) Close() error {
 	return m.watcher.Close()
 }
 
+// unusableFileModes are file types that cannot hold a database. Opening a named
+// pipe would block while the manager lock is held. Windows reparse points that
+// Go reports as irregular, such as cloud placeholders, are still loaded.
+const unusableFileModes = fs.ModeDir | fs.ModeNamedPipe | fs.ModeSocket | fs.ModeDevice
+
+// fileKind describes an unusable file type for error messages.
+func fileKind(mode fs.FileMode) string {
+	switch {
+	case mode.IsDir():
+		return "directory"
+	case mode&fs.ModeNamedPipe != 0:
+		return "named pipe"
+	case mode&fs.ModeSocket != 0:
+		return "socket"
+	default:
+		return "device"
+	}
+}
+
 // loadDatabase loads a database file (must be called with lock held).
 func (m *Manager) loadDatabase(path string, info os.FileInfo) error {
+	if info.Mode()&unusableFileModes != 0 {
+		return fmt.Errorf("not a database file: %s is a %s", path, fileKind(info.Mode()))
+	}
 	absPath, err := databasePath(path)
 	if err != nil {
 		return fmt.Errorf("resolve database path: %w", err)
@@ -404,9 +426,24 @@ func (m *Manager) watchSubdirectory(path string) error {
 	return nil
 }
 
-// loadMMDBFile loads a single MMDB file entry.
+// loadMMDBFile loads a single MMDB file entry. A symlinked entry is loaded
+// with its target's file info, as LoadDatabase does, so later change checks
+// compare the same file. Broken symlinks are skipped.
 func (m *Manager) loadMMDBFile(path string, d os.DirEntry) error {
 	info, statErr := d.Info()
+	if statErr == nil && info.Mode()&fs.ModeSymlink != 0 {
+		info, statErr = os.Stat(path)
+		if errors.Is(statErr, fs.ErrNotExist) {
+			slog.Warn(
+				"Skipping database symlink with a missing target",
+				"path",
+				path,
+				"err",
+				statErr,
+			)
+			return nil
+		}
+	}
 	if statErr != nil {
 		slog.Warn("Failed to get file info", "path", path, "err", statErr)
 		return nil // Continue processing other files
