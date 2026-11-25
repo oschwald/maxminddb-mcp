@@ -111,7 +111,7 @@ dockers_v2:
     images: [ghcr.io/oschwald/maxminddb-mcp]
     tags:
       - "{{ .Version }}"
-      - "{{ if not .IsSnapshot }}latest{{ end }}"
+      - "{{ if not (or .IsSnapshot .Prerelease) }}latest{{ end }}"
     dockerfile: Dockerfile
     platforms: [linux/amd64, linux/arm64]
     flags: ["--pull=true"]
@@ -128,14 +128,14 @@ dockers_v2:
     platforms: [linux/amd64]
     tags:
       - "{{ .Version }}-amd64"
-      - "{{ if not .IsSnapshot }}latest-amd64{{ end }}"
+      - "{{ if not (or .IsSnapshot .Prerelease) }}latest-amd64{{ end }}"
 
   - <<: *container
     id: arm64
     platforms: [linux/arm64]
     tags:
       - "{{ .Version }}-arm64"
-      - "{{ if not .IsSnapshot }}latest-arm64{{ end }}"
+      - "{{ if not (or .IsSnapshot .Prerelease) }}latest-arm64{{ end }}"
 
 nfpms:
   - id: packages
@@ -197,7 +197,7 @@ release:
     ### Container Images
     
     ```bash
-    # Pull the latest image
+    # Pull this release's image
     docker pull ghcr.io/oschwald/maxminddb-mcp:{{ .Version }}
     
     # Set database_dir = "/data" in the config and make it readable by UID 1001.

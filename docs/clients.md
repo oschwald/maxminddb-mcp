@@ -245,6 +245,8 @@ docker run --rm -i \
   ghcr.io/oschwald/maxminddb-mcp:latest
 ```
 
+The `latest` tag follows the newest stable release. To run a prerelease, use its version tag, such as `ghcr.io/oschwald/maxminddb-mcp:1.2.0-rc.1`.
+
 The image runs as UID 1001. A config bind mount must be readable by that user. A data bind mount must be writable by that user when downloads are enabled. Docker named volumes inherit the image's `/data` permissions on first use.
 
 The container has no HTTP port or subprocess healthcheck. Check the running MCP connection from the client.

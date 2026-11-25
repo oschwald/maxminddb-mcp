@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Load databases from a symlinked database directory. Previously the server started with no databases.
 - Skip unreadable subdirectories, such as a root-owned `lost+found`, instead of failing startup.
 - Unload databases in a subdirectory that is moved out of the database directory or deleted.
+- Prerelease tags no longer move the `latest`, `latest-amd64`, and `latest-arm64` container tags. Prerelease images are published only under their version tags.
 
 ## [0.4.0] - 2026-10-18
 
