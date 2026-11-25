@@ -236,11 +236,42 @@ func (m *Manager) registerIterator(iterator *ManagedIterator) (*ManagedIterator,
 	m.cleanupExpired()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.iterators) >= MaxIterators {
+	if len(m.iterators) >= MaxIterators && !m.evictCompletedLocked() {
 		return nil, ErrIteratorLimit
 	}
 	m.iterators[iterator.ID] = iterator
 	return iterator, nil
+}
+
+// evictCompletedLocked releases the idle exhausted iterator that was accessed
+// least recently. Its resume token still returns the empty final page. The
+// caller must hold m.mu.
+func (m *Manager) evictCompletedLocked() bool {
+	var oldest *ManagedIterator
+	for _, iterator := range m.iterators {
+		select {
+		case iterator.busy <- struct{}{}:
+		default:
+			continue
+		}
+		older := oldest == nil || iterator.LastAccess.Before(oldest.LastAccess)
+		if !iterator.exhausted || !older {
+			<-iterator.busy
+			continue
+		}
+		// Keep the candidate locked so a page cannot start before it is released.
+		if oldest != nil {
+			<-oldest.busy
+		}
+		oldest = iterator
+	}
+	if oldest == nil {
+		return false
+	}
+	oldest.close()
+	delete(m.iterators, oldest.ID)
+	<-oldest.busy
+	return true
 }
 
 // GetIterator retrieves an iterator if its idle timeout has not expired.
@@ -286,7 +317,9 @@ func (m *Manager) Iterate(
 	case iterator.busy <- struct{}{}:
 	}
 	defer func() { <-iterator.busy }()
-	if iterator.closed {
+	// A closed exhausted iterator can still answer with its final page. This
+	// covers a completed query evicted after a caller looked it up.
+	if iterator.closed && !iterator.exhausted {
 		return nil, errors.New("iterator expired; resume with its token or start a new query")
 	}
 	last, processed, matched, exhausted := iterator.LastNetwork, iterator.Processed, iterator.Matched, iterator.exhausted

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Release the least recently used completed query when the 128-iterator limit is reached, so finished `lookup_network` and `lookup_range` queries no longer block new ones until they expire.
 - Build with Go 1.27.4, which fixes standard library vulnerabilities in `net/http` and `crypto/x509`.
 - Publish GitHub releases only after every asset is uploaded. The `releases/latest/download` links for `maxminddb.mcpb` and `claude-marketplace.json` no longer return 404 while a release finishes, and `checksums.txt` is final when it first appears. The Homebrew cask updates after the release is public.
 

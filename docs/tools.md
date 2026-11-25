@@ -72,7 +72,7 @@ An unknown or expired ID without a token returns `iterator_expired`. Token resum
 
 Live iterators retain a cursor. Token resumes scan to the saved position once. Requests on the same iterator run serially. Cancellation rolls back an incomplete page so it can be retried without losing records.
 
-A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. Each server retains at most 128 iterators, including completed queries until they expire. Expired entries are reclaimed before creating an iterator. At the limit, new queries and token resumes return `iterator_limit`. Continue with an existing `iterator_id` or wait for idle entries to expire. A failed or canceled first page releases its iterator immediately.
+A page limit bounds the returned records, not the work needed to find matches. Use a narrow CIDR and cancel long scans through the client. Idle iterators expire after `iterator_ttl`. Each server retains at most 128 iterators, including completed queries until they expire. Expired entries are reclaimed before creating an iterator. At the limit, the idle completed query with the oldest access is released to make room. Its ID expires. Resuming its token returns the empty final page, subject to the same limit. If every retained query is unfinished or running, new queries and token resumes return `iterator_limit`. Continue with an existing `iterator_id` or wait for idle entries to expire. A failed or canceled first page releases its iterator immediately.
 
 ## `lookup_range`
 
