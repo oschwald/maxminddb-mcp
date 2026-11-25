@@ -65,6 +65,35 @@ jobs:
       - name: Test installed extension
         run: npm run test:extensions
       
+      # GoReleaser signs and notarizes the macOS binaries only when all five
+      # secrets are set. A stable release without them would push unsigned
+      # binaries to the Homebrew cask, which Gatekeeper blocks, so it fails.
+      # Prereleases skip the tap and only warn.
+      - name: Check macOS signing secrets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+        run: |
+          missing=()
+          for name in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_ISSUER_ID MACOS_NOTARY_KEY_ID MACOS_NOTARY_KEY; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            exit 0
+          fi
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            echo "::warning::Missing macOS signing secrets: ${missing[*]}. The macOS binaries will not be signed or notarized."
+          else
+            echo "::error::Missing macOS signing secrets: ${missing[*]}. Stable releases must sign and notarize the macOS binaries."
+            exit 1
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7.3.0
         with:
@@ -73,6 +102,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
       - name: Save Homebrew cask
         if: ${{ !contains(github.ref_name, '-') }}

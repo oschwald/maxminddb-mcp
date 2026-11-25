@@ -139,6 +139,16 @@ brew install --cask oschwald/tap/maxminddb-mcp
 
 The tap is populated by stable releases.
 
+GoReleaser signs the macOS binaries with a Developer ID Application certificate and notarizes them with an App Store Connect API key before it builds the archives, so the cask installs binaries that Gatekeeper allows. Notarization waits for Apple's result for up to 20 minutes. A bare executable cannot be stapled, so macOS checks the ticket online on first launch. Signing uses five Actions secrets in this repository:
+
+- `MACOS_SIGN_P12`: the Developer ID Application certificate and its private key, exported from Keychain Access as a `.p12` file and base64 encoded on one line with `openssl base64 -A -in Certificates.p12`.
+- `MACOS_SIGN_PASSWORD`: the password for that `.p12` file.
+- `MACOS_NOTARY_ISSUER_ID`: the issuer ID shown on the App Store Connect API keys page.
+- `MACOS_NOTARY_KEY_ID`: the API key's ID.
+- `MACOS_NOTARY_KEY`: the API key's `.p8` file, base64 encoded with `openssl base64 -A -in AuthKey_KEYID.p8`.
+
+A stable release fails if any of these is missing. A prerelease warns and publishes unsigned macOS binaries. Snapshot builds never sign. The macOS MCPB and plugin packages are built before signing and still contain unsigned binaries. To check a released binary on a Mac, install the cask, confirm with `xattr -l "$(which maxminddb-mcp)"` that it is quarantined, check the signature with `codesign -dv --verbose=2 "$(which maxminddb-mcp)"`, and run `maxminddb-mcp --version`.
+
 Anthropic's extension directory is a separate submission and review process. CI publishes downloadable bundles, not an approved directory listing. These bundles are unsigned. Verify the downloaded bundle's execution and any OS security prompts on a clean desktop before submitting it. Directory approval or publisher certificates cannot be created by this repository's release workflow.
 
 OpenAI packages are staged in `dist/openai-plugins/PLATFORM_ARCH`. Each package uses the supported `.codex-plugin/plugin.json` compatibility manifest and root `.mcp.json`, with `${PLUGIN_ROOT}` for the executable path. A local marketplace catalog points to that package. All plugin packages share `packaging/skills/`, including `setup` and `investigate-ips`. The setup skill comes from `packaging/skills/setup/SKILL.md`. OpenAI's `onboardingSkill` points to this file. Keep Claude settings placeholders out of OpenAI manifests. The OpenAI package uses the server's existing config discovery.

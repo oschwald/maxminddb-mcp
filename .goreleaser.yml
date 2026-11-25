@@ -51,6 +51,29 @@ builds:
     goarch: [amd64, arm64]
     ignore: []
 
+# Sign the macOS binaries with a Developer ID Application certificate and
+# notarize them so Gatekeeper allows the quarantined files that Homebrew
+# installs. This runs after the builds and before the archives, so the release
+# archives and the cask use the signed binaries. Snapshot builds and releases
+# without all five signing secrets skip it. A bare executable cannot be stapled;
+# Gatekeeper checks the notarization ticket online on first launch.
+notarize:
+  macos:
+    - ids: [darwin]
+      enabled: >-
+        {{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD")
+        (isEnvSet "MACOS_NOTARY_ISSUER_ID") (isEnvSet "MACOS_NOTARY_KEY_ID")
+        (isEnvSet "MACOS_NOTARY_KEY") (not .IsSnapshot) }}
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - id: default
     ids: [maxminddb-mcp]
